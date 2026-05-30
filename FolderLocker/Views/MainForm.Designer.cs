@@ -29,13 +29,13 @@
         private void InitializeComponent()
         {
             label2 = new Label();
-            textBox1 = new TextBox();
-            button2 = new Button();
+            txtPath = new TextBox();
+            btnChoose = new Button();
             label1 = new Label();
             label3 = new Label();
-            textBox2 = new TextBox();
-            button1 = new Button();
-            button3 = new Button();
+            txtPassword = new TextBox();
+            btnEncrypt = new Button();
+            btnDecrypt = new Button();
             SuspendLayout();
             // 
             // label2
@@ -47,23 +47,23 @@
             label2.TabIndex = 1;
             label2.Text = "Chọn file/folder cần mã hóa:";
             // 
-            // textBox1
+            // txtPath
             // 
-            textBox1.Location = new Point(21, 65);
-            textBox1.Name = "textBox1";
-            textBox1.PlaceholderText = "Link xuất hiện ở đây";
-            textBox1.ReadOnly = true;
-            textBox1.Size = new Size(237, 27);
-            textBox1.TabIndex = 2;
+            txtPath.Location = new Point(21, 65);
+            txtPath.Name = "txtPath";
+            txtPath.PlaceholderText = "Link xuất hiện ở đây";
+            txtPath.ReadOnly = true;
+            txtPath.Size = new Size(289, 27);
+            txtPath.TabIndex = 2;
             // 
-            // button2
+            // btnChoose
             // 
-            button2.Location = new Point(216, 20);
-            button2.Name = "button2";
-            button2.Size = new Size(94, 29);
-            button2.TabIndex = 4;
-            button2.Text = "Chọn";
-            button2.UseVisualStyleBackColor = true;
+            btnChoose.Location = new Point(216, 20);
+            btnChoose.Name = "btnChoose";
+            btnChoose.Size = new Size(94, 29);
+            btnChoose.TabIndex = 4;
+            btnChoose.Text = "Chọn";
+            btnChoose.UseVisualStyleBackColor = true;
             // 
             // label1
             // 
@@ -82,45 +82,45 @@
             label3.TabIndex = 6;
             label3.Text = "Password: ";
             // 
-            // textBox2
+            // txtPassword
             // 
-            textBox2.Location = new Point(104, 125);
-            textBox2.Name = "textBox2";
-            textBox2.PlaceholderText = "Nhập password";
-            textBox2.Size = new Size(190, 27);
-            textBox2.TabIndex = 7;
-            textBox2.UseSystemPasswordChar = true;
+            txtPassword.Location = new Point(104, 129);
+            txtPassword.Name = "txtPassword";
+            txtPassword.PasswordChar = '*';
+            txtPassword.PlaceholderText = "Nhập password";
+            txtPassword.Size = new Size(190, 27);
+            txtPassword.TabIndex = 7;
             // 
-            // button1
+            // btnEncrypt
             // 
-            button1.Location = new Point(126, 241);
-            button1.Name = "button1";
-            button1.Size = new Size(184, 29);
-            button1.TabIndex = 8;
-            button1.Text = "Mã hóa và Xuất";
-            button1.UseVisualStyleBackColor = true;
+            btnEncrypt.Location = new Point(126, 227);
+            btnEncrypt.Name = "btnEncrypt";
+            btnEncrypt.Size = new Size(184, 29);
+            btnEncrypt.TabIndex = 8;
+            btnEncrypt.Text = "Mã hóa và Xuất";
+            btnEncrypt.UseVisualStyleBackColor = true;
             // 
-            // button3
+            // btnDecrypt
             // 
-            button3.Location = new Point(126, 276);
-            button3.Name = "button3";
-            button3.Size = new Size(184, 29);
-            button3.TabIndex = 9;
-            button3.Text = "Giải mã và xuất";
-            button3.UseVisualStyleBackColor = true;
+            btnDecrypt.Location = new Point(126, 274);
+            btnDecrypt.Name = "btnDecrypt";
+            btnDecrypt.Size = new Size(184, 29);
+            btnDecrypt.TabIndex = 9;
+            btnDecrypt.Text = "Giải mã và xuất";
+            btnDecrypt.UseVisualStyleBackColor = true;
             // 
             // FolderLocker
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(482, 346);
-            Controls.Add(button3);
-            Controls.Add(button1);
-            Controls.Add(textBox2);
+            ClientSize = new Size(431, 336);
+            Controls.Add(btnDecrypt);
+            Controls.Add(btnEncrypt);
+            Controls.Add(txtPassword);
             Controls.Add(label3);
             Controls.Add(label1);
-            Controls.Add(button2);
-            Controls.Add(textBox1);
+            Controls.Add(btnChoose);
+            Controls.Add(txtPath);
             Controls.Add(label2);
             Name = "FolderLocker";
             Text = "FolderLocker";
@@ -131,12 +131,12 @@
         #endregion
 
         private Label label2;
-        private TextBox textBox1;
-        private Button button2;
+        private TextBox txtPath;
+        private Button btnChoose;
         private Label label1;
         private Label label3;
-        private TextBox textBox2;
-        private Button button1;
-        private Button button3;
+        private TextBox txtPassword;
+        private Button btnEncrypt;
+        private Button btnDecrypt;
     }
 }
