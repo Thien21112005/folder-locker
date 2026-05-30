@@ -64,6 +64,7 @@
             btnChoose.TabIndex = 4;
             btnChoose.Text = "Chọn";
             btnChoose.UseVisualStyleBackColor = true;
+            btnChoose.Click += btnChoose_Click;
             // 
             // label1
             // 
@@ -99,6 +100,7 @@
             btnEncrypt.TabIndex = 8;
             btnEncrypt.Text = "Mã hóa và Xuất";
             btnEncrypt.UseVisualStyleBackColor = true;
+            btnEncrypt.Click += btnEncrypt_Click;
             // 
             // btnDecrypt
             // 
@@ -108,8 +110,9 @@
             btnDecrypt.TabIndex = 9;
             btnDecrypt.Text = "Giải mã và xuất";
             btnDecrypt.UseVisualStyleBackColor = true;
+            btnDecrypt.Click += btnDecrypt_Click;
             // 
-            // FolderLocker
+            // MainForm
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -122,7 +125,7 @@
             Controls.Add(btnChoose);
             Controls.Add(txtPath);
             Controls.Add(label2);
-            Name = "FolderLocker";
+            Name = "MainForm";
             Text = "FolderLocker";
             ResumeLayout(false);
             PerformLayout();
