@@ -96,5 +96,20 @@ namespace FolderLocker.Controllers
                 return (false, "Sai password hoặc file bị lỗi!");
             }
         }
+
+
+        // ── Xóa file/folder gốc ──
+        public (bool success, string message) DeleteSource(string path)
+        {
+            try
+            {
+                _model.Delete(path);
+                return (true, "Đã xóa file/folder gốc!");
+            }
+            catch (Exception ex)
+            {
+                return (false, "Xóa thất bại: " + ex.Message);
+            }
+        }
     }
 }
