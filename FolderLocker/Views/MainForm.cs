@@ -1,8 +1,8 @@
-namespace FolderLocker
+namespace FolderLocker.Views
 {
-    public partial class FolderLocker : Form
+    public partial class MainForm : Form
     {
-        public FolderLocker()
+        public MainForm()
         {
             InitializeComponent();
         }

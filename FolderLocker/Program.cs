@@ -1,3 +1,5 @@
+using FolderLocker.Views;
+
 namespace FolderLocker
 {
     internal static class Program
@@ -11,7 +13,7 @@ namespace FolderLocker
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
-            Application.Run(new FolderLocker());
+            Application.Run(new MainForm());
         }
     }
 }

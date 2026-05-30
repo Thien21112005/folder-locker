@@ -1,6 +1,6 @@
-﻿namespace FolderLocker
+﻿namespace FolderLocker.Views
 {
-    partial class FolderLocker
+    partial class MainForm
     {
         /// <summary>
         ///  Required designer variable.
