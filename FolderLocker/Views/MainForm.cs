@@ -5,30 +5,49 @@ namespace FolderLocker.Views
     public partial class MainForm : Form
     {
         private readonly LockerController _controller = new LockerController();
+
         public MainForm()
         {
             InitializeComponent();
+            // Ẩn btnDecrypt mặc định
+            btnDecrypt.Visible = false;
         }
 
+        // ── Chọn file hoặc folder ──
         private void btnChoose_Click(object sender, EventArgs e)
         {
+            // Thử chọn folder trước
             using var folderDialog = new FolderBrowserDialog();
-            folderDialog.Description = "Chọn folder cần mã hóa (hoặc Cancel để chọn file)";
+            folderDialog.Description = "Chọn folder/file (Cancel để chọn file)";
 
-            if(folderDialog.ShowDialog() == DialogResult.OK)
+            if (folderDialog.ShowDialog() == DialogResult.OK)
             {
                 txtPath.Text = folderDialog.SelectedPath;
+                UpdateButtons();
                 return;
             }
-            // Nếu cancel thì chọn file 
+
+            // Nếu Cancel thì chọn file
             using var fileDialog = new OpenFileDialog();
-            fileDialog.Title = "Chọn file cần mã hóa";
+            fileDialog.Title = "Chọn file";
             fileDialog.Filter = "Tất cả file (*.*)|*.*";
+
             if (fileDialog.ShowDialog() == DialogResult.OK)
+            {
                 txtPath.Text = fileDialog.FileName;
+                UpdateButtons();
+            }
         }
 
-        //Mã hóa 
+        // ── Ẩn hiện button tùy loại file ──
+        private void UpdateButtons()
+        {
+            bool isEnc = txtPath.Text.EndsWith(".enc");
+            btnEncrypt.Visible = !isEnc;  // không phải .enc → hiện Encrypt
+            btnDecrypt.Visible = isEnc;   // là .enc → hiện Decrypt
+        }
+
+        // ── Mã hóa ──
         private void btnEncrypt_Click(object sender, EventArgs e)
         {
             // Chọn nơi lưu file .enc
@@ -39,6 +58,7 @@ namespace FolderLocker.Views
 
             if (saveDialog.ShowDialog() != DialogResult.OK) return;
 
+            // Gọi Controller mã hóa
             var result = _controller.Encrypt(txtPath.Text, saveDialog.FileName, txtPassword.Text);
 
             if (!result.success)
@@ -60,28 +80,20 @@ namespace FolderLocker.Views
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
 
-            txtPath.Clear();
-            txtPassword.Clear();
-
+            ClearForm();
         }
 
+        // ── Giải mã ──
         private void btnDecrypt_Click(object sender, EventArgs e)
         {
-            // Chọn file .enc
-            using var openDialog = new OpenFileDialog();
-            openDialog.Title = "Chọn file cần giải mã";
-            openDialog.Filter = "Encrypted file (*.enc)|*.enc";
-
-            if (openDialog.ShowDialog() != DialogResult.OK) return;
-
-            // Chọn nơi xuất
+            // Chỉ hỏi nơi xuất thôi
             using var folderDialog = new FolderBrowserDialog();
             folderDialog.Description = "Chọn nơi xuất file/folder sau khi giải mã";
 
             if (folderDialog.ShowDialog() != DialogResult.OK) return;
 
             // Gọi Controller giải mã
-            var result = _controller.Decrypt(openDialog.FileName, folderDialog.SelectedPath, txtPassword.Text);
+            var result = _controller.Decrypt(txtPath.Text, folderDialog.SelectedPath, txtPassword.Text);
 
             MessageBox.Show(result.message,
                 result.success ? "Thành công" : "Thất bại",
@@ -89,10 +101,16 @@ namespace FolderLocker.Views
                 result.success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
 
             if (result.success)
-            {
-                txtPath.Clear();
-                txtPassword.Clear();
-            }
+                ClearForm();
+        }
+
+        // ── Clear form sau khi xong ──
+        private void ClearForm()
+        {
+            txtPath.Clear();
+            txtPassword.Clear();
+            btnEncrypt.Visible = true;
+            btnDecrypt.Visible = false;
         }
     }
 }

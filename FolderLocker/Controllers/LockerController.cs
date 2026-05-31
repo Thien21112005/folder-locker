@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -33,12 +33,23 @@ namespace FolderLocker.Controllers
 
                 byte[] data;
 
-                //Nén nếu là data, đọc là file 
+                //Nén nếu là folder, nếu là file thì lưu thêm tên gốc vào data
                 if (isFolder)
                 {
                     data = _model.CompressFolder(sourcePath);
                 }
-                else data = File.ReadAllBytes(sourcePath);
+                else
+                {
+                    byte[] fileBytes = File.ReadAllBytes(sourcePath);
+                    string fileName = Path.GetFileName(sourcePath);
+                    byte[] nameBytes = Encoding.UTF8.GetBytes(fileName);
+                    byte[] nameLengthBytes = BitConverter.GetBytes(nameBytes.Length);
+
+                    data = new byte[4 + nameBytes.Length + fileBytes.Length];
+                    Array.Copy(nameLengthBytes, 0, data, 0, 4);
+                    Array.Copy(nameBytes, 0, data, 4, nameBytes.Length);
+                    Array.Copy(fileBytes, 0, data, 4 + nameBytes.Length, fileBytes.Length);
+                }
 
                 byte[] encrypted = _model.Encrypt(data, password);
                 // Đánh dấu folder(1) hay file(0) ở byte đầu
@@ -79,17 +90,26 @@ namespace FolderLocker.Controllers
                 //Giải mã 
                 byte[] data = _model.Decrypt(encrypted, password);
                 
-                //Tên output = tên file .enc bỏ đuôi .enc 
-                string outputName = Path.GetFileNameWithoutExtension(encPath);
-                string outputPath = Path.Combine(outputFolder, outputName);
-
                 //Giải nén nếu là folder, ghi đè nếu là file 
                 if (isFolder)
                 {
+                    //Tên output = tên file .enc bỏ đuôi .enc 
+                    string outputName = Path.GetFileNameWithoutExtension(encPath);
+                    string outputPath = Path.Combine(outputFolder, outputName);
                     _model.DecompressFolder(data, outputPath);
+                    return (true, "Giải mã thành công!\nXuất tại: " + outputPath);
                 }
-                else File.WriteAllBytes(outputPath, data);
-                return (true, "Giải mã thành công!\nXuất tại: " + outputPath);
+                else 
+                {
+                    int nameLength = BitConverter.ToInt32(data, 0);
+                    string originalFileName = Encoding.UTF8.GetString(data, 4, nameLength);
+                    byte[] fileBytes = new byte[data.Length - 4 - nameLength];
+                    Array.Copy(data, 4 + nameLength, fileBytes, 0, fileBytes.Length);
+                    
+                    string outputPath = Path.Combine(outputFolder, originalFileName);
+                    File.WriteAllBytes(outputPath, fileBytes);
+                    return (true, "Giải mã thành công!\nXuất tại: " + outputPath);
+                }
             }
             catch
             {

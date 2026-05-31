@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -32,7 +32,7 @@ namespace FolderLocker.Models
             aes.IV = iv;
 
             var encrypted = new byte[data.Length - 16];
-            Array.Copy(data, 0, encrypted, 0, encrypted.Length);
+            Array.Copy(data, 16, encrypted, 0, encrypted.Length);
 
             using var ms = new MemoryStream();
 
@@ -63,7 +63,7 @@ namespace FolderLocker.Models
         public void DecompressFolder(byte[] data, string outputPath)
         {
             Directory.CreateDirectory(outputPath);
-            using var ms = new MemoryStream();
+            using var ms = new MemoryStream(data);
             using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
             zip.ExtractToDirectory(outputPath, true);
         }

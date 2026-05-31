@@ -110,6 +110,7 @@
             btnDecrypt.TabIndex = 9;
             btnDecrypt.Text = "Giải mã và xuất";
             btnDecrypt.UseVisualStyleBackColor = true;
+            btnDecrypt.Visible = false;
             btnDecrypt.Click += btnDecrypt_Click;
             // 
             // MainForm
