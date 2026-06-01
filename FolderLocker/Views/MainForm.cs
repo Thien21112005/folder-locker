@@ -169,7 +169,7 @@ namespace FolderLocker.Views
                 txtPassword.UseSystemPasswordChar = true;
                 txtPassword.PasswordChar = '●';
             }
-            txtPassword.IconRight = DrawEyeIcon(!isHidden);
+            txtPassword.IconRight = DrawEyeIcon(isHidden);
         }
 
         private void txtConfirmPassword_IconRightClick(object sender, EventArgs e)
@@ -186,7 +186,7 @@ namespace FolderLocker.Views
                 txtConfirmPassword.UseSystemPasswordChar = true;
                 txtConfirmPassword.PasswordChar = '●';
             }
-            txtConfirmPassword.IconRight = DrawEyeIcon(!isHidden);
+            txtConfirmPassword.IconRight = DrawEyeIcon(isHidden);
         }
 
         private async void btnAction_Click(object sender, EventArgs e)
