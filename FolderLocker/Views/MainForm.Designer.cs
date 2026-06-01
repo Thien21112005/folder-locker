@@ -9,7 +9,7 @@ namespace FolderLocker.Views
         private Guna.UI2.WinForms.Guna2TextBox txtPassword;
         private Guna.UI2.WinForms.Guna2TextBox txtConfirmPassword;
         private Guna.UI2.WinForms.Guna2CheckBox chkDeleteOriginal;
-        private Guna.UI2.WinForms.Guna2Button btnAction;
+        private Guna.UI2.WinForms.Guna2GradientButton btnAction;
         private Guna.UI2.WinForms.Guna2ProgressBar progressBar;
         private System.Windows.Forms.Label lblTitle;
         private Guna.UI2.WinForms.Guna2ControlBox btnClose;
@@ -38,7 +38,7 @@ namespace FolderLocker.Views
             this.txtPassword = new Guna.UI2.WinForms.Guna2TextBox();
             this.txtConfirmPassword = new Guna.UI2.WinForms.Guna2TextBox();
             this.chkDeleteOriginal = new Guna.UI2.WinForms.Guna2CheckBox();
-            this.btnAction = new Guna.UI2.WinForms.Guna2Button();
+            this.btnAction = new Guna.UI2.WinForms.Guna2GradientButton();
             this.progressBar = new Guna.UI2.WinForms.Guna2ProgressBar();
             this.lblTitle = new System.Windows.Forms.Label();
             this.btnClose = new Guna.UI2.WinForms.Guna2ControlBox();
@@ -147,6 +147,8 @@ namespace FolderLocker.Views
             this.txtPassword.Size = new System.Drawing.Size(400, 40);
             this.txtPassword.TabIndex = 3;
             this.txtPassword.UseSystemPasswordChar = true;
+            this.txtPassword.IconRightCursor = System.Windows.Forms.Cursors.Hand;
+            this.txtPassword.IconRightClick += new System.EventHandler(this.txtPassword_IconRightClick);
 
             // txtConfirmPassword
             this.txtConfirmPassword.BorderRadius = 8;
@@ -161,6 +163,8 @@ namespace FolderLocker.Views
             this.txtConfirmPassword.Size = new System.Drawing.Size(400, 40);
             this.txtConfirmPassword.TabIndex = 4;
             this.txtConfirmPassword.UseSystemPasswordChar = true;
+            this.txtConfirmPassword.IconRightCursor = System.Windows.Forms.Cursors.Hand;
+            this.txtConfirmPassword.IconRightClick += new System.EventHandler(this.txtConfirmPassword_IconRightClick);
 
             // chkDeleteOriginal
             this.chkDeleteOriginal.AutoSize = true;
@@ -198,8 +202,10 @@ namespace FolderLocker.Views
             this.btnAction.DisabledState.BorderColor = System.Drawing.Color.DarkGray;
             this.btnAction.DisabledState.CustomBorderColor = System.Drawing.Color.DarkGray;
             this.btnAction.DisabledState.FillColor = System.Drawing.Color.FromArgb(((int)(((byte)(169)))), ((int)(((byte)(169)))), ((int)(((byte)(169)))));
+            this.btnAction.DisabledState.FillColor2 = System.Drawing.Color.FromArgb(((int)(((byte)(169)))), ((int)(((byte)(169)))), ((int)(((byte)(169)))));
             this.btnAction.DisabledState.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(141)))), ((int)(((byte)(141)))), ((int)(((byte)(141)))));
-            this.btnAction.FillColor = System.Drawing.Color.FromArgb(((int)(((byte)(94)))), ((int)(((byte)(148)))), ((int)(((byte)(255)))));
+            this.btnAction.FillColor = System.Drawing.Color.FromArgb(((int)(((byte)(74)))), ((int)(((byte)(110)))), ((int)(((byte)(255)))));
+            this.btnAction.FillColor2 = System.Drawing.Color.FromArgb(((int)(((byte)(148)))), ((int)(((byte)(94)))), ((int)(((byte)(255)))));
             this.btnAction.Font = new System.Drawing.Font("Segoe UI Semibold", 10F, System.Drawing.FontStyle.Bold);
             this.btnAction.ForeColor = System.Drawing.Color.White;
             this.btnAction.Location = new System.Drawing.Point(25, 395);

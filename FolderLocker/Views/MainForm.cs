@@ -16,6 +16,8 @@ namespace FolderLocker.Views
         public MainForm()
         {
             InitializeComponent();
+            txtPassword.IconRight = DrawEyeIcon(false);
+            txtConfirmPassword.IconRight = DrawEyeIcon(false);
         }
 
         private void pnlDragDrop_DragEnter(object sender, DragEventArgs e)
@@ -88,7 +90,8 @@ namespace FolderLocker.Views
                 }
                 
                 btnAction.Text = "MÃ HÓA DỮ LIỆU";
-                btnAction.FillColor = System.Drawing.Color.FromArgb(94, 148, 255); // Blue
+                btnAction.FillColor = System.Drawing.Color.FromArgb(74, 110, 255);
+                btnAction.FillColor2 = System.Drawing.Color.FromArgb(148, 94, 255);
                 txtConfirmPassword.Visible = true;
                 chkDeleteOriginal.Visible = true;
                 lblForgotPassword.Visible = false;
@@ -101,7 +104,8 @@ namespace FolderLocker.Views
                 lblIcon.ForeColor = System.Drawing.Color.FromArgb(46, 204, 113); // Green
 
                 btnAction.Text = "GIẢI MÃ DỮ LIỆU";
-                btnAction.FillColor = System.Drawing.Color.FromArgb(46, 204, 113); // Green
+                btnAction.FillColor = System.Drawing.Color.FromArgb(46, 204, 113);
+                btnAction.FillColor2 = System.Drawing.Color.FromArgb(26, 188, 156);
                 txtConfirmPassword.Visible = false;
                 chkDeleteOriginal.Visible = false;
                 lblForgotPassword.Visible = true;
@@ -117,13 +121,72 @@ namespace FolderLocker.Views
                 lblForgotPassword.Text = "Đã nhớ mật khẩu? Dùng mật khẩu";
                 txtPassword.PlaceholderText = "Nhập mã khôi phục (FL-XXXX-XXXX-XXXX)";
                 txtPassword.UseSystemPasswordChar = false;
+                txtPassword.PasswordChar = '\0';
+                txtPassword.IconRight = null;
             }
             else
             {
                 lblForgotPassword.Text = "Quên mật khẩu? Dùng mã khôi phục";
                 txtPassword.PlaceholderText = "Mật khẩu";
                 txtPassword.UseSystemPasswordChar = true;
+                txtPassword.PasswordChar = '●';
+                txtPassword.IconRight = DrawEyeIcon(false);
             }
+        }
+
+        private System.Drawing.Bitmap DrawEyeIcon(bool open)
+        {
+            var bmp = new System.Drawing.Bitmap(24, 24);
+            using var g = System.Drawing.Graphics.FromImage(bmp);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var pen = new System.Drawing.Pen(System.Drawing.Color.Gray, 2);
+            g.DrawCurve(pen, new System.Drawing.Point[] { new System.Drawing.Point(2, 12), new System.Drawing.Point(12, 4), new System.Drawing.Point(22, 12) });
+            g.DrawCurve(pen, new System.Drawing.Point[] { new System.Drawing.Point(2, 12), new System.Drawing.Point(12, 20), new System.Drawing.Point(22, 12) });
+            
+            if (open)
+            {
+                g.DrawEllipse(pen, 9, 9, 6, 6);
+            }
+            else
+            {
+                g.DrawLine(pen, 4, 4, 20, 20);
+            }
+            return bmp;
+        }
+
+        private void txtPassword_IconRightClick(object sender, EventArgs e)
+        {
+            if (_isRecoveryMode) return;
+            bool isHidden = txtPassword.PasswordChar == '●' || txtPassword.UseSystemPasswordChar;
+            
+            if (isHidden)
+            {
+                txtPassword.UseSystemPasswordChar = false;
+                txtPassword.PasswordChar = '\0';
+            }
+            else
+            {
+                txtPassword.UseSystemPasswordChar = true;
+                txtPassword.PasswordChar = '●';
+            }
+            txtPassword.IconRight = DrawEyeIcon(!isHidden);
+        }
+
+        private void txtConfirmPassword_IconRightClick(object sender, EventArgs e)
+        {
+            bool isHidden = txtConfirmPassword.PasswordChar == '●' || txtConfirmPassword.UseSystemPasswordChar;
+            
+            if (isHidden)
+            {
+                txtConfirmPassword.UseSystemPasswordChar = false;
+                txtConfirmPassword.PasswordChar = '\0';
+            }
+            else
+            {
+                txtConfirmPassword.UseSystemPasswordChar = true;
+                txtConfirmPassword.PasswordChar = '●';
+            }
+            txtConfirmPassword.IconRight = DrawEyeIcon(!isHidden);
         }
 
         private async void btnAction_Click(object sender, EventArgs e)
@@ -195,8 +258,7 @@ namespace FolderLocker.Views
                 return;
             }
 
-            string msg = result.message + "\n\n⚠️ ĐÂY LÀ MÃ KHÔI PHỤC CỦA BẠN:\n" + result.recoveryCode + "\n\nHãy lưu lại cẩn thận phòng khi quên mật khẩu!";
-            MessageBox.Show(msg, "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowSuccessWithCopy(result.message, result.recoveryCode);
 
             if (deleteSrc)
             {
@@ -266,13 +328,75 @@ namespace FolderLocker.Views
             
             _isEncryptMode = true;
             btnAction.Text = "MÃ HÓA DỮ LIỆU";
-            btnAction.FillColor = System.Drawing.Color.FromArgb(94, 148, 255);
+            btnAction.FillColor = System.Drawing.Color.FromArgb(74, 110, 255);
+            btnAction.FillColor2 = System.Drawing.Color.FromArgb(148, 94, 255);
             txtConfirmPassword.Visible = true;
             chkDeleteOriginal.Visible = true;
             lblForgotPassword.Visible = false;
             _isRecoveryMode = false;
             txtPassword.PlaceholderText = "Mật khẩu";
             txtPassword.UseSystemPasswordChar = true;
+            txtPassword.PasswordChar = '●';
+            txtPassword.IconRight = DrawEyeIcon(false);
+            
+            txtConfirmPassword.UseSystemPasswordChar = true;
+            txtConfirmPassword.PasswordChar = '●';
+            txtConfirmPassword.IconRight = DrawEyeIcon(false);
+        }
+
+        private void ShowSuccessWithCopy(string message, string recoveryCode)
+        {
+            using var f = new Form();
+            f.Size = new System.Drawing.Size(400, 230);
+            f.StartPosition = FormStartPosition.CenterParent;
+            f.FormBorderStyle = FormBorderStyle.None;
+            f.BackColor = System.Drawing.Color.White;
+
+            var components = new System.ComponentModel.Container();
+            var borderless = new Guna.UI2.WinForms.Guna2BorderlessForm(components);
+            borderless.ContainerControl = f;
+            borderless.BorderRadius = 15;
+
+            var lblTitle = new System.Windows.Forms.Label() { Text = "Thành công!", Location = new System.Drawing.Point(20, 20), AutoSize = true, Font = new System.Drawing.Font("Segoe UI Semibold", 16, System.Drawing.FontStyle.Bold), ForeColor = System.Drawing.Color.FromArgb(46, 204, 113) };
+            var lblSub = new System.Windows.Forms.Label() { Text = "Yêu cầu lưu trữ bảo mật Mã khôi phục hệ thống dưới đây:", Location = new System.Drawing.Point(20, 60), AutoSize = true, Font = new System.Drawing.Font("Segoe UI", 10), ForeColor = System.Drawing.Color.Gray };
+
+            var txt = new Guna.UI2.WinForms.Guna2TextBox() { 
+                Text = recoveryCode, 
+                Location = new System.Drawing.Point(20, 95), 
+                Size = new System.Drawing.Size(360, 45), 
+                ReadOnly = true, 
+                Font = new System.Drawing.Font("Segoe UI", 13, System.Drawing.FontStyle.Bold),
+                BorderRadius = 8,
+                TextAlign = HorizontalAlignment.Center,
+                ForeColor = System.Drawing.Color.FromArgb(50, 50, 50)
+            };
+
+            var btnCopy = new Guna.UI2.WinForms.Guna2Button() { Text = "Copy Mã", Location = new System.Drawing.Point(20, 160), Size = new System.Drawing.Size(150, 45), BorderRadius = 8, FillColor = System.Drawing.Color.FromArgb(74, 110, 255), Font = new System.Drawing.Font("Segoe UI Semibold", 10, System.Drawing.FontStyle.Bold) };
+            var btnOk = new Guna.UI2.WinForms.Guna2Button() { Text = "XONG", Location = new System.Drawing.Point(230, 160), Size = new System.Drawing.Size(150, 45), BorderRadius = 8, FillColor = System.Drawing.Color.FromArgb(230, 230, 230), ForeColor = System.Drawing.Color.FromArgb(100, 100, 100), Font = new System.Drawing.Font("Segoe UI Semibold", 10, System.Drawing.FontStyle.Bold) };
+            
+            btnCopy.Click += (s, e) => {
+                Clipboard.SetText(recoveryCode);
+                btnCopy.Text = "Đã Copy!";
+                btnCopy.FillColor = System.Drawing.Color.FromArgb(46, 204, 113);
+            };
+
+            btnOk.Click += (s, e) => f.Close();
+
+            f.Controls.Add(lblTitle);
+            f.Controls.Add(lblSub);
+            f.Controls.Add(txt);
+            f.Controls.Add(btnCopy);
+            f.Controls.Add(btnOk);
+            f.AcceptButton = btnOk;
+
+            f.Load += (s, e) => {
+                f.ActiveControl = btnCopy;
+                txt.SelectionStart = 0;
+                txt.SelectionLength = 0;
+            };
+            
+            f.ShowDialog(this);
+            components.Dispose();
         }
     }
 }

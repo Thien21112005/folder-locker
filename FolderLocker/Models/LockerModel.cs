@@ -120,10 +120,17 @@ namespace FolderLocker.Models
             byte[] providedHash = HashPassword(passwordOrRecoveryCode);
             
             byte[] fileKey = null;
-            try { fileKey = DecryptKey(passEnc, providedHash); } catch { }
+            try { 
+                var temp = DecryptKey(passEnc, providedHash);
+                if (temp.Length == 32) fileKey = temp;
+            } catch { }
+            
             if (fileKey == null)
             {
-                try { fileKey = DecryptKey(recEnc, providedHash); } catch { }
+                try { 
+                    var temp = DecryptKey(recEnc, providedHash);
+                    if (temp.Length == 32) fileKey = temp;
+                } catch { }
             }
 
             if (fileKey == null)
