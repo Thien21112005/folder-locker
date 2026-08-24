@@ -1,7 +1,79 @@
-# Tài liệu Phát triển Dự án FolderLocker (Developer Guide)
+# FolderLocker
+
+> 🌐 **Language / Ngôn ngữ:** [English](#english) | [Tiếng Việt](#tiếng-việt)
+
+---
+
+<a name="english"></a>
+# FolderLocker - Developer Guide & Project Documentation (English)
+
+## 1. Project Overview
+**FolderLocker** is a folder security and management application for Windows, developed in **C#** on the **Windows Forms** (.NET 10.0) framework. The project follows the **Model-View-Controller (MVC)** architectural pattern to ensure Separation of Concerns, maintainability, and scalability.
+
+## 2. Security Architecture & Core Algorithms
+FolderLocker employs a multi-layer security mechanism using industry-standard cryptographic technologies:
+
+### 2.1. Standard Algorithms
+- **AES (Advanced Encryption Standard)**: Serves as the core symmetric encryption algorithm for files and directories. Uses a 256-bit key combined with a cryptographically secure random Initialization Vector (IV), ensuring identical files produce completely different ciphertexts.
+- **SHA-256 (Secure Hash Algorithm 256-bit)**: Applied to hash user passwords and recovery codes prior to key derivation. This prevents plaintext storage and defends against brute-force attacks.
+
+### 2.2. Data Processing Mechanism
+- **File Chunking**: For high performance and memory efficiency, large file streams are processed in 4MB buffer chunks (`BUFFER_SIZE = 4096 * 1024`). This avoids high RAM consumption and prevents `OutOfMemoryException` when encrypting multi-gigabyte files.
+- **Archive Compression (`ZipArchive`)**: Before streaming encryption, folders and nested subdirectories are packaged and compressed using `ZipArchiveMode.Create`. This reduces output size and accelerates disk I/O operations.
+
+### 2.3. Recovery Mechanism & Compatibility
+- **Dual-Key Architecture (Format V2)**: Version 2 introduces an enhanced File Header format. The master decryption key (`FileKey`) is encrypted independently using two methods: one derived from the user's password and another from a random Recovery Code (`FL-XXXX-XXXX-XXXX`). Both encrypted keys are stored safely in the header metadata, enabling unlocking via either method without sacrificing entropy.
+- **Backward Compatibility**: The decryption engine inspects the file header byte. If legacy format V1 (without recovery codes) is detected, it automatically routes the stream to the V1 decryption routine, ensuring access to historical encrypted data.
+
+## 3. System Requirements & Development Environment
+- **Operating System**: Windows 10 / Windows 11
+- **IDE**: Visual Studio 2022 or later
+- **Framework**: .NET 10.0 Windows (`net10.0-windows`)
+- **Dependencies**: `Guna.UI2.WinForms` (Modern UI components, installed via NuGet)
+
+## 4. Project Structure
+```text
+FolderLocker/
+├── Controllers/       # Controller classes handling data flow and input validation
+│   └── LockerController.cs
+├── Models/            # Cryptographic algorithms, file/directory I/O, state management
+│   └── LockerModel.cs
+├── Views/             # Windows Forms UI and presentation logic
+│   ├── MainForm.cs
+│   ├── MainForm.Designer.cs
+│   └── MainForm.resx
+├── Properties/        # Assembly information and launch settings
+└── ico/               # Application icons and graphic assets
+```
+
+## 5. Setup and Deployment Guide
+1. Clone the repository to your local machine:
+   ```bash
+   git clone https://github.com/Thien21112005/folder-locker.git
+   ```
+2. Open `FolderLocker.slnx` or `FolderLocker/FolderLocker.csproj` in Visual Studio 2022+.
+3. Restore NuGet packages to download `Guna.UI2.WinForms`.
+4. Build the solution (<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>).
+5. Set `FolderLocker` as the Startup Project.
+6. Press <kbd>F5</kbd> to run in Debug mode.
+
+## 6. Coding Guidelines
+- **MVC Pattern**: Strictly adhere to the MVC pattern. Do not mix business/crypto logic into Views, and keep UI logic out of Controllers and Models.
+- **Naming Conventions**:
+  - `PascalCase` for Class names, Methods, and Properties.
+  - `camelCase` for Local variables and Parameters.
+  - Prefix `_` for Private fields.
+- **UI Design**: Use Guna UI controls for modern enterprise styling. Avoid default WinForms controls when a Guna equivalent exists.
+- **Security**: Any modification to cryptographic flows in `LockerModel.cs` requires strict review. Never hardcode security keys.
+- **Error Handling**: Use structured `try-catch` blocks. Avoid exposing raw exception stack traces in UI; log errors and present user-friendly alerts.
+
+---
+
+<a name="tiếng-việt"></a>
+# Tài liệu Phát triển Dự án FolderLocker (Tiếng Việt)
 
 ## 1. Tổng quan Dự án
-FolderLocker là một ứng dụng quản lý và bảo mật thư mục dành cho hệ điều hành Windows, được phát triển bằng ngôn ngữ C# trên nền tảng Windows Forms. Dự án áp dụng kiến trúc Model-View-Controller (MVC) nhằm đảm bảo sự phân tách trách nhiệm (Separation of Concerns), tính khả bảo trì và khả năng mở rộng trong tương lai.
+FolderLocker là một ứng dụng quản lý và bảo mật thư mục dành cho hệ điều hành Windows, được phát triển bằng ngôn ngữ C# trên nền tảng Windows Forms (.NET 10.0). Dự án áp dụng kiến trúc Model-View-Controller (MVC) nhằm đảm bảo sự phân tách trách nhiệm (Separation of Concerns), tính khả bảo trì và khả năng mở rộng trong tương lai.
 
 ## 2. Kiến trúc Bảo mật & Thuật toán Cốt lõi
 Phần mềm sử dụng cơ chế bảo mật đa lớp (Multi-layer Security) với các công nghệ mã hóa tiêu chuẩn công nghiệp nhằm đảm bảo an toàn tuyệt đối cho dữ liệu:
@@ -19,8 +91,9 @@ Phần mềm sử dụng cơ chế bảo mật đa lớp (Multi-layer Security) 
 - **Tương thích ngược (Backward Compatibility)**: Hàm giải mã được lập trình để tự động đọc File Header (byte đầu tiên). Nếu hệ thống phát hiện cấu trúc tệp được mã hóa từ phiên bản cũ (Legacy V1 - không có mã khôi phục), hệ thống sẽ tự động chuyển hướng luồng dữ liệu sang module giải mã V1 tương ứng, đảm bảo người dùng không mất quyền truy cập vào các dữ liệu lịch sử.
 
 ## 3. Yêu cầu Hệ thống & Môi trường Phát triển
+- **Hệ điều hành**: Windows 10 hoặc Windows 11
 - **IDE**: Visual Studio 2022 hoặc phiên bản mới hơn.
-- **Framework**: .NET Framework hoặc .NET Core / .NET 5+ (Vui lòng kiểm tra file `.csproj` để xác định chính xác Target Framework).
+- **Framework**: .NET 10.0 Windows (`net10.0-windows`).
 - **Thư viện bên thứ ba (Dependencies)**: Guna.UI2.WinForms (Sử dụng cho các thành phần giao diện người dùng hiện đại, yêu cầu khôi phục thông qua NuGet).
 
 ## 4. Cấu trúc Thư mục Dự án
@@ -32,8 +105,11 @@ Dự án được tổ chức thành các thành phần chính như sau:
 - **Properties/**: Chứa các thông tin cấu hình của Assembly và thiết lập tài nguyên khởi động.
 
 ## 5. Hướng dẫn Thiết lập và Triển khai
-1. Clone kho lưu trữ (repository) về môi trường phát triển cục bộ.
-2. Mở tệp giải pháp (Solution) hoặc tệp dự án `FolderLocker.csproj` bằng Visual Studio.
+1. Clone kho lưu trữ (repository) về môi trường phát triển cục bộ:
+   ```bash
+   git clone https://github.com/Thien21112005/folder-locker.git
+   ```
+2. Mở tệp giải pháp (Solution `FolderLocker.slnx`) hoặc tệp dự án `FolderLocker.csproj` bằng Visual Studio.
 3. Khôi phục các gói NuGet (NuGet Package Restore) để tải về thư viện `Guna.UI2.WinForms`.
 4. Xây dựng dự án (Build Solution - phím tắt Ctrl + Shift + B) để biên dịch và phân tích các luồng phụ thuộc.
 5. Thiết lập `FolderLocker` làm Startup Project.
