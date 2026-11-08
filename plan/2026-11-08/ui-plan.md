@@ -4,7 +4,23 @@
 > Đây là app WinForms, nên bộ detector tự động (chỉ đọc HTML) không áp dụng được. Kết quả dựa trên review thiết kế đọc từ mã nguồn, chưa chạy app để chụp màn hình.
 > Chế độ bề mặt: **Operate** (công cụ). Ưu tiên: rõ ràng, an toàn, theo quy ước Windows; không cần cầu kỳ.
 
-## Điểm hiện tại: 19/40 (Poor)
+## Trạng thái triển khai (cập nhật cuối ngày)
+| Hạng mục | Trạng thái | Giai đoạn |
+|----------|-----------|-----------|
+| U1 Xóa bản gốc an toàn | ✅ Thùng rác, mặc định tắt, kiểm tra .enc trước khi xóa | P2, P11 |
+| U2 Mã khôi phục | ✅ `RecoveryCodeDialog` | P9 |
+| U3 Bàn phím / trình đọc màn hình | ✅ vùng thả focus được, nhãn, AccessibleName, AcceptButton, TabIndex, Alt+H, Ctrl+O | P8 |
+| U4 Tương phản + token màu + dark mode | ✅ `Theme` sáng/tối theo Windows | P8 |
+| U5 Trạng thái khi chạy | ✅ nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, "Mở thư mục" | P8, P10 |
+| U6 Hướng dẫn mật khẩu | ✅ độ mạnh, tối thiểu 8 ký tự, báo khớp tại chỗ, Caps Lock | P8 |
+| U7 Kéo thả có phản hồi | ✅ viền đổi màu khi kéo vào; nhiều mục được xử lý luôn (batch) | P8, P12 |
+| U8 Câu chữ + kiểu chữ | ✅ bỏ IN HOA/"tải lên", 4 bậc cỡ chữ, Segoe Fluent Icons | P8 |
+| U9 Kỹ thuật | ✅ hết rò rỉ GDI, PerMonitorV2 | P2, P8 |
+| Câu hỏi mở | Đã chốt: gộp một ô; có dark mode; chưa bắt lưu mã *trước* khi mã hóa | — |
+
+Chưa chấm lại điểm sau khi sửa. Có thể chạy `/impeccable critique` để đo lại.
+
+## Điểm lúc review ban đầu: 19/40 (Poor)
 
 | # | Heuristic | Điểm | Vấn đề chính |
 |---|-----------|------|--------------|

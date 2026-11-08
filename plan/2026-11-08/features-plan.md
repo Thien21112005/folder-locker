@@ -3,6 +3,22 @@
 > Chỉ là plan, **chưa triển khai** trong đợt này. Làm sau khi xong [bugfix-plan.md](bugfix-plan.md) (cần format V3 làm nền).
 > Ưu tiên: ⭐⭐⭐ cao · ⭐⭐ vừa · ⭐ thấp. Mỗi mục là một commit riêng `feat(...)`.
 
+## Trạng thái (cập nhật cuối ngày): đã làm cả 12 mục
+| Mục | Giai đoạn | Ghi chú |
+|-----|-----------|---------|
+| F1 Đổi mật khẩu | P13 | Ghi qua file tạm (an toàn hơn ghi đè tại chỗ) |
+| F2 Hủy | P10 | |
+| F3 Lưu mã ra .txt | P9 | |
+| F4 Kiểm tra trước khi xóa | P11 | |
+| F5 Hàng loạt | P12 | Mỗi file một mã khôi phục |
+| F6 Độ mạnh mật khẩu | P8 | Danh sách mật khẩu phổ biến nhúng sẵn (nhỏ) |
+| F7 Tích hợp Explorer | P16 | Kèm chế độ một phiên bản duy nhất để gộp nhiều file |
+| F8 Xóa an toàn | P11 | Có cảnh báo SSD |
+| F9 Giữ thời gian | P14 | Cờ header `0x02` |
+| F10 Nhật ký | P15 | Không ghi tên/đường dẫn/bí mật |
+| F11 CLI | P17 | Mật khẩu chỉ qua stdin/biến môi trường |
+| F12 CI/Release | P18 | Chưa chạy thật trên GitHub |
+
 ## F1 — Đổi mật khẩu không cần mã hóa lại ⭐⭐⭐
 - **Ý tưởng:** V3 bọc `fileKey` bằng khóa dẫn xuất từ mật khẩu. Đổi mật khẩu thì chỉ cần giải bọc bằng mật khẩu cũ (hoặc mã khôi phục), rồi bọc lại bằng mật khẩu mới với salt mới, ghi đè **phần header**. Làm gần như tức thì, file vài GB cũng vậy.
 - **Lưu ý:** AAD của chunk gắn với hash header. Cần tách thành 2 phần: "header bất biến" (magic, version, nonce prefix, chunk size) dùng làm AAD, và "key slots" (có thể thay đổi) không đưa vào AAD của dữ liệu. Phải chốt chuyện này ngay khi thiết kế V3 ở P3.

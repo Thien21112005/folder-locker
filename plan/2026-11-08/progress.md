@@ -34,7 +34,7 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 | P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | ✅ | `feat` |
 | P17 | F11: CLI | ✅ | `feat(cli)` |
 | P18 | F12: GitHub Actions | ✅ | `ci` |
-| P19 | Polish UI, chụp kiểm tra, cập nhật tài liệu | 🔄 | |
+| P19 | Polish UI, chụp kiểm tra, cập nhật tài liệu | ✅ | `docs` |
 
 ## Nhật ký
 - **2026-11-08** — Review code, build OK (0 lỗi, 23 warning). Chạy critique giao diện bằng impeccable. Lập plan.
@@ -78,3 +78,6 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Test registry chạy trên khóa tạm và tự dọn. 81/81 test pass.
 - **P17** — F11 CLI: `encrypt` / `decrypt` / `verify` / `help`. Mật khẩu chỉ nhận qua stdin hoặc `FOLDERLOCKER_PASSWORD`, từ chối `--password`. stdout dễ cho máy đọc (`<mã>\t<file.enc>`); mã thoát 0/1/2; có `--out`, `--overwrite`, `--delete-original` (kiểm tra lại file .enc trước khi xóa). Gắn vào console của shell (WinExe), xuất UTF-8. Đã chạy thử exe thật: mã hóa → giải mã → thiếu mật khẩu. 90/90 test pass.
 - **P18** — F12 GitHub Actions (`.github/workflows/ci.yml`): build (warning = lỗi) và chạy test trên `windows-latest` mỗi lần push/PR. Khi push tag `v*`, publish hai bản: exe đầy đủ không cần cài .NET, và exe nhỏ cần .NET 10 Desktop Runtime; kèm `SHA256SUMS.txt` và tạo GitHub Release. Đã chạy thử `dotnet publish` single-file ở máy (exe 118 MB chạy `help` được). Workflow **chưa chạy trên GitHub** vì chưa push.
+- **P19** — Render lại toàn bộ ảnh kiểm tra (18 ảnh: light/dark × trống, mã hóa, mật khẩu yếu/mạnh, giải mã, nhiều mục, đang chạy, dialog mã khôi phục một/nhiều mã, đổi mật khẩu). README (song ngữ) và user_guide viết lại theo đủ tính năng mới; đánh dấu trạng thái trong ui-plan và features-plan.
+- **Kết thúc đợt 2** — Toàn bộ U1–U9 và F1–F12 đã xong. Build 0 warning, **90/90 test pass**.
+  - Còn lại cần làm thủ công: chạy app thật để kiểm tra các tương tác mà ảnh render không thể hiện được (placeholder khi đang focus, menu ⚙, kéo thả thật, Explorer integration); push lên GitHub để CI chạy lần đầu; chạy lại `/impeccable critique` để chấm điểm mới.
