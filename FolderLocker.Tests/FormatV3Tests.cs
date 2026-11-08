@@ -137,8 +137,8 @@ public class FormatV3Tests
     public void Truncated_file_is_rejected(int cut)
     {
         using var t = new TempDir();
-        // payload = tên (4 + 5 byte) + dữ liệu; chọn kích thước để chunk cuối đúng 1000 byte plaintext
-        string src = t.WriteFile("a.bin", TempDir.RandomBytes(Chunk + 1000 - 9));
+        // payload = tên (4 + 5 byte) + thời gian (16) + dữ liệu; chọn kích thước để chunk cuối đúng 1000 byte plaintext
+        string src = t.WriteFile("a.bin", TempDir.RandomBytes(Chunk + 1000 - 9 - 16));
         string enc = t.Path_("a.enc");
         _controller.Encrypt(src, enc, "pw");
 

@@ -60,6 +60,52 @@ namespace FolderLocker.Models
             return PathSafety.SafeFileName(Encoding.UTF8.GetString(nameBytes));
         }
 
+        // ---------- Thời gian sửa / tạo (UTC ticks, int64 LE ×2) ----------
+
+        public static void WriteTimestamps(Stream s, string sourcePath, bool isFolder)
+        {
+            DateTime written = isFolder ? Directory.GetLastWriteTimeUtc(sourcePath) : File.GetLastWriteTimeUtc(sourcePath);
+            DateTime created = isFolder ? Directory.GetCreationTimeUtc(sourcePath) : File.GetCreationTimeUtc(sourcePath);
+            Span<byte> buf = stackalloc byte[16];
+            BinaryPrimitives.WriteInt64LittleEndian(buf, written.Ticks);
+            BinaryPrimitives.WriteInt64LittleEndian(buf[8..], created.Ticks);
+            s.Write(buf);
+        }
+
+        /// <summary>Đọc 2 mốc thời gian; null nếu giá trị nằm ngoài phạm vi hợp lệ (vẫn tiêu thụ đủ 16 byte).</summary>
+        public static (DateTime written, DateTime created)? ReadTimestamps(Stream s)
+        {
+            Span<byte> buf = stackalloc byte[16];
+            s.ReadExactly(buf);
+            long w = BinaryPrimitives.ReadInt64LittleEndian(buf);
+            long c = BinaryPrimitives.ReadInt64LittleEndian(buf[8..]);
+            bool valid(long t) => t > DateTime.MinValue.Ticks && t < DateTime.MaxValue.Ticks;
+            return valid(w) && valid(c)
+                ? (new DateTime(w, DateTimeKind.Utc), new DateTime(c, DateTimeKind.Utc))
+                : null;
+        }
+
+        /// <summary>Khôi phục thời gian; lỗi (ổ FAT, quyền...) không làm hỏng kết quả giải mã.</summary>
+        public static void TryApplyTimestamps(string path, bool isFolder, DateTime written, DateTime created)
+        {
+            try
+            {
+                if (isFolder)
+                {
+                    Directory.SetCreationTimeUtc(path, created);
+                    Directory.SetLastWriteTimeUtc(path, written);
+                }
+                else
+                {
+                    File.SetCreationTimeUtc(path, created);
+                    File.SetLastWriteTimeUtc(path, written);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+            }
+        }
+
         // ---------- Folder ⇄ zip ----------
 
         /// <summary>Nén cả cây thư mục vào stream, giữ thư mục rỗng và thời gian sửa; tiến độ tính theo byte.</summary>

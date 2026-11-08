@@ -13,12 +13,12 @@ namespace FolderLocker.Models.Formats
     /// Định dạng V3 (xác thực, có salt):
     /// <code>
     /// [Header bất biến – 14 byte, dùng làm AAD]
-    ///   magic "FLCK" (4) | version = 3 (1) | flags (1, bit0 = folder) | chunkSize (int32 LE) | noncePrefix (4)
+    ///   magic "FLCK" (4) | version = 3 (1) | flags (1: bit0 = folder, bit1 = có thời gian) | chunkSize (int32 LE) | noncePrefix (4)
     /// [Key slots – có thể thay khi đổi mật khẩu]
     ///   slotCount (1)
     ///   mỗi slot: type (1: 1 = mật khẩu, 2 = mã khôi phục) | iterations (int32 LE) | salt (16)
     ///             | nonce (12) | fileKey đã bọc AES-GCM (32) | tag (16)
-    /// [Dữ liệu] các chunk AES-256-GCM (xem AesGcmChunk); plaintext = tên gốc + nội dung file / zip folder
+    /// [Dữ liệu] các chunk AES-256-GCM (xem AesGcmChunk); plaintext = tên gốc [+ thời gian sửa/tạo nếu bit1] + nội dung file / zip folder
     /// </code>
     /// </summary>
     internal static class FormatV3
@@ -32,6 +32,8 @@ namespace FolderLocker.Models.Formats
         private const int MaxChunkSize = 64 * 1024 * 1024;
         private const int MaxSlots = 8;
         private const byte FlagFolder = 0x01;
+        /// <summary>Payload có thời gian sửa + tạo (UTC ticks) ngay sau tên gốc.</summary>
+        private const byte FlagTimestamps = 0x02;
 
         private const byte SlotPassword = 1;
         private const byte SlotRecovery = 2;
@@ -68,6 +70,7 @@ namespace FolderLocker.Models.Formats
 
                     using var enc = new AesGcmChunkWriter(fs, fileKey, header, noncePrefix, DefaultChunkSize);
                     PayloadIO.WriteName(enc, OriginalName(sourcePath, destPath, isFolder));
+                    PayloadIO.WriteTimestamps(enc, sourcePath, isFolder);
 
                     if (isFolder)
                     {
@@ -108,7 +111,7 @@ namespace FolderLocker.Models.Formats
             var header = new byte[HeaderSize];
             Magic.CopyTo(header);
             header[4] = Version;
-            header[5] = isFolder ? FlagFolder : (byte)0;
+            header[5] = (byte)((isFolder ? FlagFolder : 0) | FlagTimestamps);
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(6), chunkSize);
             noncePrefix.CopyTo(header, 10);
             return header;
@@ -162,7 +165,10 @@ namespace FolderLocker.Models.Formats
         private const string WrongSecret = "Sai mật khẩu hoặc mã khôi phục!";
 
         /// <summary>Header + key slot đã đọc từ đầu file. Stream nằm ngay đầu phần dữ liệu.</summary>
-        private sealed record Parsed(byte[] Header, List<KeySlot> Slots, bool IsFolder, int ChunkSize, byte[] NoncePrefix, long DataOffset);
+        private sealed record Parsed(byte[] Header, List<KeySlot> Slots, bool IsFolder, int ChunkSize, byte[] NoncePrefix, long DataOffset)
+        {
+            public bool HasTimestamps => (Header[5] & FlagTimestamps) != 0;
+        }
 
         private static (Parsed? parsed, string? error) Parse(Stream fs)
         {
@@ -284,6 +290,7 @@ namespace FolderLocker.Models.Formats
             {
                 using var dec = new AesGcmChunkReader(fs, fileKey, parsed.Header, parsed.NoncePrefix, parsed.ChunkSize);
                 if (PayloadIO.ReadName(dec) == null) return OperationResult.Fail("Tên file trong dữ liệu không hợp lệ!");
+                if (parsed.HasTimestamps) PayloadIO.ReadTimestamps(dec);
                 PayloadIO.CopyWithProgress(dec, Stream.Null, fs, progress, ct);
             }
             finally
@@ -316,6 +323,7 @@ namespace FolderLocker.Models.Formats
             {
                 string? name = PayloadIO.ReadName(dec);
                 if (name == null) return OperationResult.Fail("Tên file trong dữ liệu không hợp lệ!");
+                var times = parsed.HasTimestamps ? PayloadIO.ReadTimestamps(dec) : default((DateTime, DateTime)?);
 
                 string outputPath = Path.Combine(outputFolder, name);
                 if (checkOverwrite && (File.Exists(outputPath) || Directory.Exists(outputPath)))
@@ -325,6 +333,9 @@ namespace FolderLocker.Models.Formats
                     PayloadIO.ExtractZipStream(dec, fs, outputPath, progress, ct);
                 else
                     PayloadIO.WriteFileAtomically(outputPath, dest => PayloadIO.CopyWithProgress(dec, dest, fs, progress, ct));
+
+                if (times is var (written, created))
+                    PayloadIO.TryApplyTimestamps(outputPath, parsed.IsFolder, written, created);
 
                 return new OperationResult(true, "Giải mã thành công!", outputPath);
             }
