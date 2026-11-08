@@ -15,6 +15,18 @@ namespace FolderLocker.Models
             return $"FL-{Segment()}-{Segment()}-{Segment()}";
         }
 
+        /// <summary>true nếu chuỗi (đã chuẩn hóa) có dạng FL-XXXX-XXXX-XXXX.</summary>
+        public static bool IsWellFormed(string code)
+        {
+            if (code.Length != 17 || !code.StartsWith("FL-")) return false;
+            for (int i = 3; i < 17; i++)
+            {
+                bool dash = i == 7 || i == 12;
+                if (dash ? code[i] != '-' : Alphabet.IndexOf(code[i]) < 0) return false;
+            }
+            return true;
+        }
+
         /// <summary>
         /// Chuẩn hóa mã người dùng nhập: bỏ khoảng trắng, chữ hoa, tự thêm "FL-" và dấu gạch nếu thiếu.
         /// " fl-abcd efgh-ijkl " → "FL-ABCD-EFGH-IJKL". Trả về chuỗi đã trim/upper nếu không khớp định dạng.

@@ -92,7 +92,7 @@ namespace FolderLocker.Views
             lblDragDrop.Visible = false;
 
             bool isFolder = Directory.Exists(path);
-            ApplyMode(encrypt: !path.EndsWith(".enc", StringComparison.OrdinalIgnoreCase) || isFolder);
+            ApplyMode(encrypt: isFolder || !_controller.IsEncryptedFile(path));
 
             if (_isEncryptMode)
             {

@@ -25,7 +25,7 @@ namespace FolderLocker.Controllers
 
             try
             {
-                string recCode = _model.EncryptV2(sourcePath, destPath, password, isFolder, progress!);
+                string recCode = _model.Encrypt(sourcePath, destPath, password, progress);
                 return new OperationResult(true, "Mã hóa thành công!", destPath, recCode);
             }
             catch (Exception ex)
@@ -43,15 +43,16 @@ namespace FolderLocker.Controllers
 
             try
             {
-                var (success, message, outPath) = _model.DecryptV2(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress);
-                if (message == "OVERWRITE_WARNING" && outPath != null) return OperationResult.OverwriteNeeded(outPath);
-                return new OperationResult(success, message, outPath);
+                return _model.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress);
             }
             catch (Exception ex)
             {
                 return OperationResult.Fail(Describe(ex));
             }
         }
+
+        /// <summary>true nếu là file .enc do FolderLocker tạo (đọc header, không chỉ dựa vào đuôi file).</summary>
+        public bool IsEncryptedFile(string path) => LockerModel.DetectFormat(path) != EncryptedFormat.None;
 
         /// <summary>Chuyển bản gốc vào Thùng rác. Trả về kết quả để View báo cho người dùng.</summary>
         public OperationResult DeleteSource(string path)
