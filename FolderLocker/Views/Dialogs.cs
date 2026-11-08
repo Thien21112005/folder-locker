@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.IO;
 using System.Windows.Forms;
 
@@ -67,6 +69,61 @@ namespace FolderLocker.Views
                 AllowCancel = true,
             };
             if (TaskDialog.ShowDialog(owner, page) == open) RevealInExplorer(path);
+        }
+
+        /// <summary>Hỏi ghi đè; khi còn mục phía sau thì có ô "Áp dụng cho các mục còn lại".</summary>
+        public static (bool overwrite, bool applyToAll) AskOverwrite(IWin32Window owner, string path, int remaining)
+        {
+            var overwrite = new TaskDialogButton("Ghi đè");
+            var skip = new TaskDialogButton(remaining > 0 ? "Bỏ qua mục này" : "Giữ nguyên");
+            var page = new TaskDialogPage
+            {
+                Caption = AppName,
+                Heading = "Đích đã tồn tại",
+                Text = $"'{path}' đã tồn tại. Ghi đè sẽ thay thế hoàn toàn nội dung cũ.",
+                Icon = TaskDialogIcon.Warning,
+                Buttons = { overwrite, skip },
+                DefaultButton = skip,
+                AllowCancel = true,
+                Verification = remaining > 0 ? new TaskDialogVerificationCheckBox($"Áp dụng cho {remaining} mục còn lại") : null,
+            };
+            bool yes = TaskDialog.ShowDialog(owner, page) == overwrite;
+            return (yes, page.Verification?.Checked == true);
+        }
+
+        /// <summary>Tóm tắt kết quả xử lý hàng loạt; danh sách lỗi nằm trong phần mở rộng.</summary>
+        public static void BatchSummary(IWin32Window owner, string action, int ok, int total,
+            IReadOnlyList<(string Name, string Reason)> failures, bool cancelled, string? outputFolder)
+        {
+            string heading = cancelled
+                ? $"Đã dừng — {ok}/{total} mục đã {action}"
+                : failures.Count == 0 ? $"Đã {action} xong {ok} mục" : $"Đã {action} {ok}/{total} mục";
+
+            var open = new TaskDialogButton("Mở thư mục");
+            var close = new TaskDialogButton("Đóng");
+            var page = new TaskDialogPage
+            {
+                Caption = AppName,
+                Heading = heading,
+                Text = failures.Count == 0
+                    ? outputFolder
+                    : $"{failures.Count} mục chưa xong. Bấm \"Xem chi tiết\" để biết lý do.",
+                Icon = failures.Count == 0 && !cancelled ? TaskDialogIcon.ShieldSuccessGreenBar : TaskDialogIcon.Warning,
+                AllowCancel = true,
+                Expander = failures.Count == 0 ? null : new TaskDialogExpander
+                {
+                    Text = string.Join("\n", failures.Select(f => $"• {f.Name}: {f.Reason}")),
+                    CollapsedButtonText = "Xem chi tiết",
+                    ExpandedButtonText = "Ẩn chi tiết",
+                    Position = TaskDialogExpanderPosition.AfterFootnote,
+                },
+            };
+            if (ok > 0 && outputFolder != null) page.Buttons.Add(open);
+            page.Buttons.Add(close);
+            page.DefaultButton = ok > 0 && outputFolder != null ? open : close;
+
+            if (TaskDialog.ShowDialog(owner, page) == open && outputFolder != null)
+                RevealInExplorer(outputFolder);
         }
 
         public static void RevealInExplorer(string path)

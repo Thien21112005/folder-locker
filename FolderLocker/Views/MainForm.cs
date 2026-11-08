@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Drawing;
 using System.IO;
 using System.Threading;
@@ -18,12 +20,13 @@ namespace FolderLocker.Views
 
         private readonly LockerController _controller = new LockerController();
         private readonly AppSettings _settings = AppSettings.Load();
-        private string _selectedPath = "";
+        private List<string> _selectedPaths = new();
         private bool _isEncryptMode = true;
         private bool _isBusy;
         private CancellationTokenSource? _cts;
         private string _statusVerb = "";
         private bool _closeAfterCancel;
+        private bool _holdClose;
 
         public MainForm()
         {
@@ -179,11 +182,7 @@ namespace FolderLocker.Views
             dropZone.IsDragTarget = false;
             if (_isBusy) return;
             if (e.Data?.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
-            {
-                if (files.Length > 1)
-                    Dialogs.Info(this, "Đã chọn mục đầu tiên", $"Bạn thả {files.Length} mục; hiện chỉ xử lý: {Path.GetFileName(files[0])}");
-                SetSelectedPath(files[0]);
-            }
+                SetSelectedPaths(files);
         }
 
         private void dropZone_Activated(object? sender, EventArgs e) => ChooseInput();
@@ -192,8 +191,8 @@ namespace FolderLocker.Views
         {
             if (_isBusy) return;
 
-            var btnFile = new TaskDialogCommandLinkButton("Chọn file", "Mã hóa một file, hoặc giải mã một file .enc");
-            var btnFolder = new TaskDialogCommandLinkButton("Chọn thư mục", "Mã hóa toàn bộ một thư mục");
+            var btnFile = new TaskDialogCommandLinkButton("Chọn file", "Mã hóa file, hoặc giải mã file .enc. Giữ Ctrl để chọn nhiều file.");
+            var btnFolder = new TaskDialogCommandLinkButton("Chọn thư mục", "Mã hóa toàn bộ thư mục. Giữ Ctrl để chọn nhiều thư mục.");
 
             var page = new TaskDialogPage()
             {
@@ -210,39 +209,83 @@ namespace FolderLocker.Views
                 using var fileDialog = new OpenFileDialog();
                 fileDialog.Title = "Chọn file";
                 fileDialog.Filter = "Tất cả file (*.*)|*.*|File đã mã hóa (*.enc)|*.enc";
+                fileDialog.Multiselect = true;
                 if (fileDialog.ShowDialog(this) == DialogResult.OK)
-                    SetSelectedPath(fileDialog.FileName);
+                    SetSelectedPaths(fileDialog.FileNames);
             }
             else if (result == btnFolder)
             {
                 using var folderDialog = new FolderBrowserDialog();
                 folderDialog.Description = "Chọn thư mục cần mã hóa";
                 folderDialog.UseDescriptionForTitle = true;
+                folderDialog.Multiselect = true;
                 if (folderDialog.ShowDialog(this) == DialogResult.OK)
-                    SetSelectedPath(folderDialog.SelectedPath);
+                    SetSelectedPaths(folderDialog.SelectedPaths);
             }
         }
 
-        private void SetSelectedPath(string path)
+        private static string DisplayName(string path)
         {
-            _selectedPath = path;
-            bool isFolder = Directory.Exists(path);
-            ApplyMode(encrypt: isFolder || !_controller.IsEncryptedFile(path));
-
             string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-            if (string.IsNullOrEmpty(name)) name = path;
-            string kind = isFolder ? "Thư mục"
-                : !_isEncryptMode ? "File đã mã hóa"
-                : "File · " + FormatSize(new FileInfo(path).Length);
+            return string.IsNullOrEmpty(name) ? path : name;
+        }
 
-            lblSelectedPath.Text = name;
+        /// <summary>
+        /// Nhận một hoặc nhiều mục. Toàn file .enc → giải mã; toàn file/thư mục thường → mã hóa;
+        /// trộn lẫn hai loại thì từ chối để tránh nhầm thao tác.
+        /// </summary>
+        internal void SetSelectedPaths(IEnumerable<string> paths)
+        {
+            var items = paths.Where(p => File.Exists(p) || Directory.Exists(p))
+                             .Select(Path.GetFullPath)
+                             .Distinct(StringComparer.OrdinalIgnoreCase)
+                             .ToList();
+            if (items.Count == 0) return;
+
+            var encrypted = items.Where(p => File.Exists(p) && _controller.IsEncryptedFile(p)).ToList();
+            if (encrypted.Count > 0 && encrypted.Count < items.Count)
+            {
+                Dialogs.Warn(this, "Không thể vừa mã hóa vừa giải mã",
+                    $"Bạn đã chọn {encrypted.Count} file đã mã hóa và {items.Count - encrypted.Count} mục chưa mã hóa. " +
+                    "Hãy chọn toàn file .enc để giải mã, hoặc toàn file/thư mục thường để mã hóa.");
+                return;
+            }
+
+            _selectedPaths = items;
+            ApplyMode(encrypt: encrypted.Count == 0);
+
+            string title, kind;
+            char glyph;
+            if (items.Count == 1)
+            {
+                string path = items[0];
+                bool isFolder = Directory.Exists(path);
+                title = DisplayName(path);
+                kind = isFolder ? "Thư mục"
+                    : !_isEncryptMode ? "File đã mã hóa"
+                    : "File · " + FormatSize(new FileInfo(path).Length);
+                glyph = _isEncryptMode ? (isFolder ? Theme.GlyphFolder : Theme.GlyphFile) : Theme.GlyphLock;
+                toolTip.SetToolTip(lblSelectedPath, path);
+            }
+            else
+            {
+                int folders = items.Count(Directory.Exists);
+                int files = items.Count - folders;
+                title = $"{items.Count} mục đã chọn";
+                kind = !_isEncryptMode ? $"{items.Count} file đã mã hóa"
+                    : string.Join(" · ", new[] { files > 0 ? $"{files} file" : null, folders > 0 ? $"{folders} thư mục" : null }.Where(s => s != null));
+                glyph = _isEncryptMode ? Theme.GlyphMultiple : Theme.GlyphLock;
+                var preview = items.Take(15).Select(DisplayName).ToList();
+                if (items.Count > 15) preview.Add($"… và {items.Count - 15} mục khác");
+                toolTip.SetToolTip(lblSelectedPath, string.Join(Environment.NewLine, preview));
+            }
+
+            lblSelectedPath.Text = title;
             lblSelectedPath.Visible = true;
             lblDragDrop.Text = kind;
             lblDragDrop.Font = Theme.Small;
-            toolTip.SetToolTip(lblSelectedPath, path);
-            dropZone.AccessibleDescription = $"Đã chọn: {name} ({kind}). Nhấn Enter để chọn lại.";
-
-            lblIcon.Text = (_isEncryptMode ? (isFolder ? Theme.GlyphFolder : Theme.GlyphFile) : Theme.GlyphLock).ToString();
+            dropZone.AccessibleDescription = $"Đã chọn: {title} ({kind}). Nhấn Enter để chọn lại.";
+            lblIcon.Text = glyph.ToString();
             lblIcon.ForeColor = _isEncryptMode ? Theme.Current.Link : Theme.Current.Success;
 
             txtPassword.Focus();
@@ -395,8 +438,42 @@ namespace FolderLocker.Views
             }
             UpdateFormHeight();
 
-            if (!busy && _closeAfterCancel) BeginInvoke(Close);
+            if (!busy && _closeAfterCancel && !_holdClose) BeginInvoke(Close);
         }
+
+        /// <summary>Vào trạng thái bận (một lần cho cả lô); trả về token để hủy.</summary>
+        private CancellationToken BeginBusy(string verb, bool showProgress = true)
+        {
+            _cts = new CancellationTokenSource();
+            SetBusy(true);
+            progressBar.Value = 0;
+            progressBar.Visible = showProgress;
+            lblStatus.Visible = true;
+            SetStatus(verb);
+            UpdateFormHeight();
+            return _cts.Token;
+        }
+
+        private void EndBusy()
+        {
+            _cts?.Dispose();
+            _cts = null;
+            SetBusy(false);
+        }
+
+        private void SetStatus(string verb)
+        {
+            _statusVerb = verb;
+            lblStatus.Text = verb + "…";
+        }
+
+        /// <summary>Tiến độ của mục thứ <paramref name="index"/> trong lô <paramref name="count"/> mục, quy ra tổng %.</summary>
+        private IProgress<int> MakeProgress(int index = 0, int count = 1) => new Progress<int>(percent =>
+        {
+            int overall = (index * 100 + Math.Clamp(percent, 0, 100)) / Math.Max(1, count);
+            progressBar.Value = Math.Clamp(overall, 0, 100);
+            lblStatus.Text = $"{_statusVerb}… {overall}%";
+        });
 
         /// <summary>
         /// Chạy một thao tác nền: hiện trạng thái + tiến độ, hỗ trợ hủy, luôn mở khóa form khi xong.
@@ -404,37 +481,21 @@ namespace FolderLocker.Views
         private async Task<OperationResult> RunOperation(string verb,
             Func<IProgress<int>, CancellationToken, OperationResult> work, bool showProgress = true)
         {
-            _cts = new CancellationTokenSource();
-            _statusVerb = verb;
-            SetBusy(true);
-            progressBar.Value = 0;
-            progressBar.Visible = showProgress;
-            lblStatus.Text = verb + "…";
-            lblStatus.Visible = true;
-            UpdateFormHeight();
-
-            var progress = new Progress<int>(percent =>
-            {
-                percent = Math.Clamp(percent, 0, 100);
-                progressBar.Value = percent;
-                lblStatus.Text = $"{_statusVerb}… {percent}%";
-            });
-            var token = _cts.Token;
+            var token = BeginBusy(verb, showProgress);
+            var progress = MakeProgress();
             try
             {
                 return await Task.Run(() => work(progress, token));
             }
             finally
             {
-                _cts.Dispose();
-                _cts = null;
-                SetBusy(false);
+                EndBusy();
             }
         }
 
         private void ResetForm()
         {
-            _selectedPath = "";
+            _selectedPaths = new();
             lblSelectedPath.Text = "";
             lblSelectedPath.Visible = false;
             lblDragDrop.Text = "Kéo thả file hoặc thư mục vào đây\nhoặc nhấn để chọn";
@@ -527,7 +588,7 @@ namespace FolderLocker.Views
                 return;
             }
 
-            if (string.IsNullOrEmpty(_selectedPath))
+            if (_selectedPaths.Count == 0)
             {
                 Dialogs.Warn(this, "Chưa chọn dữ liệu", "Hãy kéo thả hoặc chọn một file / thư mục trước.");
                 dropZone.Focus();
@@ -589,17 +650,26 @@ namespace FolderLocker.Views
             return true;
         }
 
-        private async Task EncryptData()
+        private Task EncryptData() =>
+            _selectedPaths.Count == 1 ? EncryptSingle(_selectedPaths[0]) : EncryptBatch(_selectedPaths.ToList());
+
+        private Task DecryptData() =>
+            _selectedPaths.Count == 1 ? DecryptSingle(_selectedPaths[0]) : DecryptBatch(_selectedPaths.ToList());
+
+        // ============================================
+        // MỘT MỤC
+        // ============================================
+
+        private async Task EncryptSingle(string source)
         {
             using var saveDialog = new SaveFileDialog();
             saveDialog.Title = "Lưu file mã hóa";
             saveDialog.Filter = "File đã mã hóa (*.enc)|*.enc";
-            saveDialog.FileName = Path.GetFileName(Path.TrimEndingDirectorySeparator(_selectedPath)) + ".enc";
+            saveDialog.FileName = DisplayName(source) + ".enc";
 
             if (saveDialog.ShowDialog(this) != DialogResult.OK) return;
 
             string dest = saveDialog.FileName;
-            string source = _selectedPath;
             string pass = txtPassword.Text;
             bool deleteSrc = chkDeleteOriginal.Checked;
 
@@ -638,7 +708,7 @@ namespace FolderLocker.Views
         /// </summary>
         private async Task<string?> DeleteOriginalAfterVerify(string source, string dest, string pass)
         {
-            var verify = await RunOperation("Đang kiểm tra lại file mã hóa", (pr, ct) => _controller.Verify(dest, pass, pr, ct));
+            var verify = await RunOperation($"Đang kiểm tra lại {Path.GetFileName(dest)}", (pr, ct) => _controller.Verify(dest, pass, pr, ct));
             if (_closeAfterCancel) return null;
             if (!verify.Success)
                 return verify.Cancelled
@@ -646,14 +716,30 @@ namespace FolderLocker.Views
                     : "File mã hóa không vượt qua bước kiểm tra nên bản gốc được giữ nguyên. " + verify.Message;
 
             var del = _settings.SecureDelete
-                ? await RunOperation("Đang xóa an toàn bản gốc", (pr, ct) => _controller.DeleteSource(source, secure: true, pr, ct))
+                ? await RunOperation($"Đang xóa an toàn {DisplayName(source)}", (pr, ct) => _controller.DeleteSource(source, secure: true, pr, ct))
                 : _controller.DeleteSource(source);
             return del.Success ? null : del.Message;
         }
 
-        private async Task DecryptData()
+        /// <summary>Hỏi thư mục xuất (mở sẵn thư mục lần trước); trả về "" nếu người dùng hủy.</summary>
+        private string ChooseOutputFolder(string description, string fallbackNear)
         {
-            string source = _selectedPath;
+            using var folderDialog = new FolderBrowserDialog();
+            folderDialog.Description = description;
+            folderDialog.UseDescriptionForTitle = true;
+            folderDialog.InitialDirectory = Directory.Exists(_settings.LastOutputFolder)
+                ? _settings.LastOutputFolder
+                : Path.GetDirectoryName(Path.GetFullPath(fallbackNear)) ?? "";
+
+            if (folderDialog.ShowDialog(this) != DialogResult.OK) return "";
+
+            _settings.LastOutputFolder = folderDialog.SelectedPath;
+            _settings.Save();
+            return folderDialog.SelectedPath;
+        }
+
+        private async Task DecryptSingle(string source)
+        {
             string pass = txtPassword.Text;
 
             // Kiểm tra mật khẩu trước, để nhập sai không phải chọn lại thư mục mỗi lần
@@ -667,26 +753,15 @@ namespace FolderLocker.Views
                 return;
             }
 
-            using var folderDialog = new FolderBrowserDialog();
-            folderDialog.Description = "Chọn nơi lưu dữ liệu sau khi giải mã";
-            folderDialog.UseDescriptionForTitle = true;
-            folderDialog.InitialDirectory = Directory.Exists(_settings.LastOutputFolder)
-                ? _settings.LastOutputFolder
-                : Path.GetDirectoryName(Path.GetFullPath(source)) ?? "";
-
-            if (folderDialog.ShowDialog(this) != DialogResult.OK) return;
-
-            string outFolder = folderDialog.SelectedPath;
-            _settings.LastOutputFolder = outFolder;
-            _settings.Save();
+            string outFolder = ChooseOutputFolder("Chọn nơi lưu dữ liệu sau khi giải mã", source);
+            if (outFolder.Length == 0) return;
 
             var result = await RunOperation("Đang giải mã", (pr, ct) => _controller.Decrypt(source, outFolder, pass, true, pr, ct));
             if (_closeAfterCancel) return;
 
             if (result.NeedsOverwriteConfirm)
             {
-                if (!Dialogs.Confirm(this, "Đích đã tồn tại", $"'{result.OutputPath}' đã tồn tại. Ghi đè sẽ thay thế hoàn toàn nội dung cũ.",
-                        "Ghi đè", "Giữ nguyên", dangerous: true))
+                if (!Dialogs.AskOverwrite(this, result.OutputPath!, remaining: 0).overwrite)
                     return;
 
                 result = await RunOperation("Đang giải mã", (pr, ct) => _controller.Decrypt(source, outFolder, pass, false, pr, ct));
@@ -707,6 +782,192 @@ namespace FolderLocker.Views
 
             Dialogs.SuccessWithOpen(this, "Giải mã thành công", result.OutputPath ?? outFolder);
             ResetForm();
+        }
+
+        // ============================================
+        // HÀNG LOẠT (F5)
+        // ============================================
+
+        private async Task EncryptBatch(List<string> sources)
+        {
+            string outDir = ChooseOutputFolder($"Chọn nơi lưu {sources.Count} file mã hóa", sources[0]);
+            if (outDir.Length == 0) return;
+
+            // Đích <tên>.enc; các mục trùng tên được đánh số để không ghi đè lẫn nhau
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var jobs = new List<(string Source, string Dest)>();
+            foreach (var src in sources)
+            {
+                string baseName = DisplayName(src);
+                string dest = Path.Combine(outDir, baseName + ".enc");
+                for (int n = 2; !used.Add(dest); n++) dest = Path.Combine(outDir, $"{baseName} ({n}).enc");
+                jobs.Add((src, dest));
+            }
+
+            var existing = jobs.Where(j => File.Exists(j.Dest)).ToList();
+            if (existing.Count > 0)
+            {
+                string list = string.Join("\n", existing.Take(8).Select(j => "• " + Path.GetFileName(j.Dest))) + (existing.Count > 8 ? "\n…" : "");
+                if (!Dialogs.Confirm(this, $"{existing.Count} file .enc đã tồn tại", list + "\n\nGhi đè các file này?",
+                        "Ghi đè", "Bỏ qua các file trùng", dangerous: true))
+                    jobs = jobs.Except(existing).ToList();
+            }
+            if (jobs.Count == 0) return;
+
+            string pass = txtPassword.Text;
+            bool deleteSrc = chkDeleteOriginal.Checked;
+            var done = new List<(string Source, string Dest, string Code)>();
+            var failures = new List<(string Name, string Reason)>();
+            bool cancelled = false;
+
+            // Giữ cửa sổ mở tới khi người dùng đã thấy các mã khôi phục, kể cả khi họ bấm đóng giữa chừng
+            _holdClose = true;
+            try
+            {
+                var ct = BeginBusy("Đang mã hóa");
+                try
+                {
+                    for (int i = 0; i < jobs.Count; i++)
+                    {
+                        var (src, dest) = jobs[i];
+                        SetStatus($"Đang mã hóa {i + 1}/{jobs.Count}: {DisplayName(src)}");
+                        var progress = MakeProgress(i, jobs.Count);
+                        var r = await Task.Run(() => _controller.Encrypt(src, dest, pass, progress, ct));
+                        if (r.Cancelled) { cancelled = true; break; }
+                        if (r.Success) done.Add((src, dest, r.RecoveryCode!));
+                        else failures.Add((DisplayName(src), r.Message));
+                    }
+                }
+                finally
+                {
+                    EndBusy();
+                }
+
+                if (done.Count > 0)
+                    RecoveryCodeDialog.ShowFor(this, done.Select(d => new RecoveryEntry(d.Dest, d.Code)).ToList());
+
+                if (deleteSrc && !_closeAfterCancel)
+                {
+                    foreach (var d in done)
+                    {
+                        string? problem = await DeleteOriginalAfterVerify(d.Source, d.Dest, pass);
+                        if (_closeAfterCancel) break;
+                        if (problem != null) failures.Add((DisplayName(d.Source), "Bản gốc chưa bị xóa. " + problem));
+                    }
+                }
+            }
+            finally
+            {
+                _holdClose = false;
+            }
+
+            if (_closeAfterCancel)
+            {
+                Close();
+                return;
+            }
+
+            // Thành công trọn vẹn thì dialog mã khôi phục đã là màn hình kết thúc
+            if (failures.Count > 0 || cancelled)
+                Dialogs.BatchSummary(this, "mã hóa", done.Count, jobs.Count, failures, cancelled, outDir);
+            ResetForm();
+        }
+
+        private async Task DecryptBatch(List<string> sources)
+        {
+            string pass = txtPassword.Text;
+            var failures = new List<(string Name, string Reason)>();
+            var unlocked = new List<string>();
+
+            var ct = BeginBusy("Đang kiểm tra mật khẩu");
+            try
+            {
+                for (int i = 0; i < sources.Count && !ct.IsCancellationRequested; i++)
+                {
+                    string p = sources[i];
+                    SetStatus($"Đang kiểm tra mật khẩu {i + 1}/{sources.Count}");
+                    var r = await Task.Run(() => _controller.CheckSecret(p, pass));
+                    MakeProgress(i, sources.Count).Report(100);
+                    if (r.Success) unlocked.Add(p);
+                    else failures.Add((DisplayName(p), r.Message));
+                }
+            }
+            finally
+            {
+                EndBusy();
+            }
+            if (_closeAfterCancel || ct.IsCancellationRequested) return;
+
+            if (unlocked.Count == 0)
+            {
+                Dialogs.Error(this, "Không mở được file nào", failures[0].Reason);
+                txtPassword.Focus();
+                txtPassword.SelectAll();
+                return;
+            }
+
+            if (failures.Count > 0)
+            {
+                string list = string.Join("\n", failures.Take(8).Select(f => "• " + f.Name)) + (failures.Count > 8 ? "\n…" : "");
+                if (!Dialogs.Confirm(this, $"Mật khẩu không đúng với {failures.Count} file", list,
+                        $"Giải mã {unlocked.Count} file còn lại", "Dừng"))
+                    return;
+            }
+
+            string outFolder = ChooseOutputFolder($"Chọn nơi lưu dữ liệu của {unlocked.Count} file", unlocked[0]);
+            if (outFolder.Length == 0) return;
+
+            int ok = 0;
+            bool cancelled = false;
+            bool? overwriteAll = null;
+
+            ct = BeginBusy("Đang giải mã");
+            try
+            {
+                for (int i = 0; i < unlocked.Count; i++)
+                {
+                    string p = unlocked[i];
+                    string name = DisplayName(p);
+                    SetStatus($"Đang giải mã {i + 1}/{unlocked.Count}: {name}");
+                    var progress = MakeProgress(i, unlocked.Count);
+                    bool check = overwriteAll != true;
+                    var r = await Task.Run(() => _controller.Decrypt(p, outFolder, pass, check, progress, ct));
+
+                    if (r.NeedsOverwriteConfirm)
+                    {
+                        bool overwrite;
+                        if (overwriteAll.HasValue)
+                        {
+                            overwrite = overwriteAll.Value;
+                        }
+                        else
+                        {
+                            var answer = Dialogs.AskOverwrite(this, r.OutputPath!, remaining: unlocked.Count - i - 1);
+                            overwrite = answer.overwrite;
+                            if (answer.applyToAll) overwriteAll = overwrite;
+                        }
+
+                        if (!overwrite)
+                        {
+                            failures.Add((name, "Bỏ qua vì đích đã tồn tại."));
+                            continue;
+                        }
+                        r = await Task.Run(() => _controller.Decrypt(p, outFolder, pass, false, progress, ct));
+                    }
+
+                    if (r.Cancelled) { cancelled = true; break; }
+                    if (r.Success) ok++;
+                    else failures.Add((name, r.Message));
+                }
+            }
+            finally
+            {
+                EndBusy();
+            }
+            if (_closeAfterCancel) return;
+
+            Dialogs.BatchSummary(this, "giải mã", ok, sources.Count, failures, cancelled, outFolder);
+            if (ok > 0) ResetForm();
         }
     }
 }
