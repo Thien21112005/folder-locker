@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 using FolderLocker.Models.Crypto;
 
 namespace FolderLocker.Models.Formats
@@ -47,7 +48,7 @@ namespace FolderLocker.Models.Formats
         // MÃ HÓA
         // ============================================
 
-        public static string Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress)
+        public static string Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress, CancellationToken ct = default)
         {
             bool isFolder = Directory.Exists(sourcePath);
             string recoveryCode = RecoveryCode.Generate();
@@ -70,12 +71,12 @@ namespace FolderLocker.Models.Formats
 
                     if (isFolder)
                     {
-                        PayloadIO.WriteFolderZip(enc, sourcePath, progress);
+                        PayloadIO.WriteFolderZip(enc, sourcePath, progress, ct);
                     }
                     else
                     {
                         using var src = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                        PayloadIO.CopyWithProgress(src, enc, src, progress);
+                        PayloadIO.CopyWithProgress(src, enc, src, progress, ct);
                     }
                 }
 
@@ -157,41 +158,64 @@ namespace FolderLocker.Models.Formats
         // GIẢI MÃ
         // ============================================
 
-        public static OperationResult Decrypt(string encPath, string outputFolder, string secret, bool checkOverwrite, IProgress<int>? progress)
+        private const string BadFormat = "File bị lỗi hoặc không đúng định dạng!";
+        private const string WrongSecret = "Sai mật khẩu hoặc mã khôi phục!";
+
+        /// <summary>Header + key slot đã đọc từ đầu file. Stream nằm ngay đầu phần dữ liệu.</summary>
+        private sealed record Parsed(byte[] Header, List<KeySlot> Slots, bool IsFolder, int ChunkSize, byte[] NoncePrefix, long DataOffset);
+
+        private static (Parsed? parsed, string? error) Parse(Stream fs)
         {
-            const string BadFormat = "File bị lỗi hoặc không đúng định dạng!";
-
-            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-
             byte[] header = new byte[HeaderSize];
             List<KeySlot> slots;
             try
             {
                 fs.ReadExactly(header);
-                if (!HasMagic(header)) return OperationResult.Fail(BadFormat);
-                if (header[4] > Version) return OperationResult.Fail("File được tạo bởi phiên bản FolderLocker mới hơn. Hãy cập nhật ứng dụng.");
-                if (header[4] != Version) return OperationResult.Fail(BadFormat);
+                if (!HasMagic(header)) return (null, BadFormat);
+                if (header[4] > Version) return (null, "File được tạo bởi phiên bản FolderLocker mới hơn. Hãy cập nhật ứng dụng.");
+                if (header[4] != Version) return (null, BadFormat);
 
                 slots = ReadSlots(fs);
             }
             catch (EndOfStreamException)
             {
-                return OperationResult.Fail(BadFormat);
+                return (null, BadFormat);
             }
 
-            bool isFolder = (header[5] & FlagFolder) != 0;
             int chunkSize = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(6));
-            byte[] noncePrefix = header.AsSpan(10, AesGcmChunk.NoncePrefixSize).ToArray();
             if (chunkSize < MinChunkSize || chunkSize > MaxChunkSize || slots.Count == 0)
-                return OperationResult.Fail(BadFormat);
+                return (null, BadFormat);
 
-            byte[]? fileKey = Unlock(slots, header, secret);
-            if (fileKey == null) return OperationResult.Fail("Sai mật khẩu hoặc mã khôi phục!");
+            return (new Parsed(header, slots, (header[5] & FlagFolder) != 0, chunkSize,
+                header.AsSpan(10, AesGcmChunk.NoncePrefixSize).ToArray(), fs.Position), null);
+        }
+
+        /// <summary>Chỉ kiểm tra mật khẩu / mã khôi phục (mở key slot), không đọc phần dữ liệu.</summary>
+        public static OperationResult CheckSecret(string encPath, string secret)
+        {
+            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var (parsed, error) = Parse(fs);
+            if (parsed == null) return OperationResult.Fail(error!);
+
+            byte[]? key = Unlock(parsed.Slots, parsed.Header, secret);
+            if (key == null) return OperationResult.Fail(WrongSecret);
+            CryptographicOperations.ZeroMemory(key);
+            return new OperationResult(true, "OK");
+        }
+
+        public static OperationResult Decrypt(string encPath, string outputFolder, string secret, bool checkOverwrite, IProgress<int>? progress, CancellationToken ct = default)
+        {
+            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var (parsed, error) = Parse(fs);
+            if (parsed == null) return OperationResult.Fail(error!);
+
+            byte[]? fileKey = Unlock(parsed.Slots, parsed.Header, secret);
+            if (fileKey == null) return OperationResult.Fail(WrongSecret);
 
             AesGcmChunkReader dec;
             try
             {
-                dec = new AesGcmChunkReader(fs, fileKey, header, noncePrefix, chunkSize);
+                dec = new AesGcmChunkReader(fs, fileKey, parsed.Header, parsed.NoncePrefix, parsed.ChunkSize);
             }
             finally
             {
@@ -207,10 +231,10 @@ namespace FolderLocker.Models.Formats
                 if (checkOverwrite && (File.Exists(outputPath) || Directory.Exists(outputPath)))
                     return OperationResult.OverwriteNeeded(outputPath);
 
-                if (isFolder)
-                    PayloadIO.ExtractZipStream(dec, fs, outputPath, progress);
+                if (parsed.IsFolder)
+                    PayloadIO.ExtractZipStream(dec, fs, outputPath, progress, ct);
                 else
-                    PayloadIO.WriteFileAtomically(outputPath, dest => PayloadIO.CopyWithProgress(dec, dest, fs, progress));
+                    PayloadIO.WriteFileAtomically(outputPath, dest => PayloadIO.CopyWithProgress(dec, dest, fs, progress, ct));
 
                 return new OperationResult(true, "Giải mã thành công!", outputPath);
             }

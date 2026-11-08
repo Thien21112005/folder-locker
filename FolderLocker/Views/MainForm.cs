@@ -1,10 +1,12 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using FolderLocker.Controllers;
 using FolderLocker.Models;
+using FolderLocker.Services;
 using FolderLocker.Views.Theming;
 using Guna.UI2.WinForms;
 
@@ -15,9 +17,13 @@ namespace FolderLocker.Views
         private const char MaskChar = '●';
 
         private readonly LockerController _controller = new LockerController();
+        private readonly AppSettings _settings = AppSettings.Load();
         private string _selectedPath = "";
         private bool _isEncryptMode = true;
         private bool _isBusy;
+        private CancellationTokenSource? _cts;
+        private string _statusVerb = "";
+        private bool _closeAfterCancel;
 
         public MainForm()
         {
@@ -69,6 +75,7 @@ namespace FolderLocker.Views
             lblMismatch.Font = Theme.Small;
             chkDeleteOriginal.Font = Theme.Small;
             btnAction.Font = Theme.BodyStrong;
+            lblStatus.Font = Theme.Small;
         }
 
         private void ApplyTheme()
@@ -94,7 +101,9 @@ namespace FolderLocker.Views
             ThemeStyles.TextBox(txtConfirmPassword, p);
             lblCapsLock.ForeColor = p.Warning;
             ThemeStyles.CheckBox(chkDeleteOriginal, p);
-            ThemeStyles.GradientButton(btnAction, p, _isEncryptMode);
+            if (_isBusy) ThemeStyles.NeutralGradientButton(btnAction, p);
+            else ThemeStyles.GradientButton(btnAction, p, _isEncryptMode);
+            lblStatus.ForeColor = p.TextSecondary;
             ThemeStyles.ProgressBar(progressBar, p, _isEncryptMode ? p.EncryptFrom : p.Success);
 
             // Icon con mắt vẽ lại theo màu theme
@@ -308,7 +317,9 @@ namespace FolderLocker.Views
         private void PasswordFields_KeyUp(object? sender, KeyEventArgs e) => UpdateCapsLock();
         private void PasswordFields_Enter(object? sender, EventArgs e) => UpdateCapsLock();
 
-        /// <summary>Khóa/mở toàn bộ input trong lúc đang xử lý.</summary>
+        /// <summary>
+        /// Khóa/mở input trong lúc đang xử lý. Khi bận, nút chính trở thành nút "Hủy".
+        /// </summary>
         private void SetBusy(bool busy)
         {
             _isBusy = busy;
@@ -317,12 +328,63 @@ namespace FolderLocker.Views
             txtPassword.Enabled = !busy;
             txtConfirmPassword.Enabled = !busy;
             chkDeleteOriginal.Enabled = !busy;
-            btnAction.Enabled = !busy;
             btnSettings.Enabled = !busy;
-            btnClose.Enabled = !busy;
-            UseWaitCursor = busy;
-            if (!busy) progressBar.Visible = false;
+            btnAction.Enabled = true;
+
+            var p = Theme.Current;
+            if (busy)
+            {
+                btnAction.Text = "Hủy";
+                btnAction.AccessibleName = "Hủy thao tác đang chạy";
+                ThemeStyles.NeutralGradientButton(btnAction, p);
+                AcceptButton = null;
+            }
+            else
+            {
+                btnAction.Text = _isEncryptMode ? "Mã hóa dữ liệu" : "Giải mã dữ liệu";
+                btnAction.AccessibleName = btnAction.Text;
+                ThemeStyles.GradientButton(btnAction, p, _isEncryptMode);
+                AcceptButton = btnAction;
+                lblStatus.Visible = false;
+                progressBar.Visible = false;
+            }
             UpdateFormHeight();
+
+            if (!busy && _closeAfterCancel) BeginInvoke(Close);
+        }
+
+        /// <summary>
+        /// Chạy một thao tác nền: hiện trạng thái + tiến độ, hỗ trợ hủy, luôn mở khóa form khi xong.
+        /// </summary>
+        private async Task<OperationResult> RunOperation(string verb,
+            Func<IProgress<int>, CancellationToken, OperationResult> work, bool showProgress = true)
+        {
+            _cts = new CancellationTokenSource();
+            _statusVerb = verb;
+            SetBusy(true);
+            progressBar.Value = 0;
+            progressBar.Visible = showProgress;
+            lblStatus.Text = verb + "…";
+            lblStatus.Visible = true;
+            UpdateFormHeight();
+
+            var progress = new Progress<int>(percent =>
+            {
+                percent = Math.Clamp(percent, 0, 100);
+                progressBar.Value = percent;
+                lblStatus.Text = $"{_statusVerb}… {percent}%";
+            });
+            var token = _cts.Token;
+            try
+            {
+                return await Task.Run(() => work(progress, token));
+            }
+            finally
+            {
+                _cts.Dispose();
+                _cts = null;
+                SetBusy(false);
+            }
         }
 
         private void ResetForm()
@@ -345,7 +407,14 @@ namespace FolderLocker.Views
             if (_isBusy && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
-                Dialogs.Info(this, "Đang xử lý dữ liệu", "Vui lòng đợi hoàn tất trước khi đóng.");
+                if (_closeAfterCancel) return;
+                if (Dialogs.Confirm(this, "Đang xử lý dữ liệu",
+                        "Hủy thao tác đang chạy và đóng ứng dụng? File đang tạo dở sẽ được dọn sạch.",
+                        "Hủy và đóng", "Tiếp tục chạy", dangerous: true))
+                {
+                    _closeAfterCancel = true;
+                    _cts?.Cancel();
+                }
             }
         }
 
@@ -401,7 +470,17 @@ namespace FolderLocker.Views
 
         private async void btnAction_Click(object? sender, EventArgs e)
         {
-            if (_isBusy) return;
+            if (_isBusy)
+            {
+                // Đang chạy → nút chính là "Hủy"
+                if (_cts is { IsCancellationRequested: false })
+                {
+                    _cts.Cancel();
+                    btnAction.Text = "Đang hủy…";
+                    btnAction.Enabled = false;
+                }
+                return;
+            }
 
             if (string.IsNullOrEmpty(_selectedPath))
             {
@@ -465,15 +544,6 @@ namespace FolderLocker.Views
             return true;
         }
 
-        private Progress<int> StartProgress()
-        {
-            SetBusy(true);
-            progressBar.Value = 0;
-            progressBar.Visible = true;
-            UpdateFormHeight();
-            return new Progress<int>(percent => progressBar.Value = Math.Clamp(percent, 0, 100));
-        }
-
         private async Task EncryptData()
         {
             using var saveDialog = new SaveFileDialog();
@@ -488,15 +558,13 @@ namespace FolderLocker.Views
             string pass = txtPassword.Text;
             bool deleteSrc = chkDeleteOriginal.Checked;
 
-            var progress = StartProgress();
-            OperationResult result;
-            try
+            var result = await RunOperation("Đang mã hóa", (pr, ct) => _controller.Encrypt(source, dest, pass, pr, ct));
+            if (_closeAfterCancel) return;
+
+            if (result.Cancelled)
             {
-                result = await Task.Run(() => _controller.Encrypt(source, dest, pass, progress));
-            }
-            finally
-            {
-                SetBusy(false);
+                Dialogs.Info(this, "Đã hủy mã hóa", result.Message);
+                return;
             }
 
             if (!result.Success)
@@ -520,17 +588,35 @@ namespace FolderLocker.Views
 
         private async Task DecryptData()
         {
+            string source = _selectedPath;
+            string pass = txtPassword.Text;
+
+            // Kiểm tra mật khẩu trước, để nhập sai không phải chọn lại thư mục mỗi lần
+            var check = await RunOperation("Đang kiểm tra mật khẩu", (_, _) => _controller.CheckSecret(source, pass), showProgress: false);
+            if (_closeAfterCancel) return;
+            if (!check.Success)
+            {
+                Dialogs.Error(this, "Không mở được file", check.Message);
+                txtPassword.Focus();
+                txtPassword.SelectAll();
+                return;
+            }
+
             using var folderDialog = new FolderBrowserDialog();
             folderDialog.Description = "Chọn nơi lưu dữ liệu sau khi giải mã";
             folderDialog.UseDescriptionForTitle = true;
+            folderDialog.InitialDirectory = Directory.Exists(_settings.LastOutputFolder)
+                ? _settings.LastOutputFolder
+                : Path.GetDirectoryName(Path.GetFullPath(source)) ?? "";
 
             if (folderDialog.ShowDialog(this) != DialogResult.OK) return;
 
             string outFolder = folderDialog.SelectedPath;
-            string source = _selectedPath;
-            string pass = txtPassword.Text;
+            _settings.LastOutputFolder = outFolder;
+            _settings.Save();
 
-            var result = await RunDecrypt(source, outFolder, pass, checkOverwrite: true);
+            var result = await RunOperation("Đang giải mã", (pr, ct) => _controller.Decrypt(source, outFolder, pass, true, pr, ct));
+            if (_closeAfterCancel) return;
 
             if (result.NeedsOverwriteConfirm)
             {
@@ -538,32 +624,24 @@ namespace FolderLocker.Views
                         "Ghi đè", "Giữ nguyên", dangerous: true))
                     return;
 
-                result = await RunDecrypt(source, outFolder, pass, checkOverwrite: false);
+                result = await RunOperation("Đang giải mã", (pr, ct) => _controller.Decrypt(source, outFolder, pass, false, pr, ct));
+                if (_closeAfterCancel) return;
+            }
+
+            if (result.Cancelled)
+            {
+                Dialogs.Info(this, "Đã hủy giải mã", result.Message);
+                return;
             }
 
             if (!result.Success)
             {
                 Dialogs.Error(this, "Giải mã thất bại", result.Message);
-                txtPassword.Focus();
-                txtPassword.SelectAll();
                 return;
             }
 
             Dialogs.SuccessWithOpen(this, "Giải mã thành công", result.OutputPath ?? outFolder);
             ResetForm();
-        }
-
-        private async Task<OperationResult> RunDecrypt(string source, string outFolder, string pass, bool checkOverwrite)
-        {
-            var progress = StartProgress();
-            try
-            {
-                return await Task.Run(() => _controller.Decrypt(source, outFolder, pass, checkOverwrite, progress));
-            }
-            finally
-            {
-                SetBusy(false);
-            }
         }
     }
 }

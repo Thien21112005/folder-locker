@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using FolderLocker.Models.Formats;
 using Microsoft.VisualBasic.FileIO;
 
@@ -21,16 +22,28 @@ namespace FolderLocker.Models
     public class LockerModel
     {
         /// <summary>Mã hóa file/folder thành file .enc; trả về mã khôi phục.</summary>
-        public string Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress) =>
-            FormatV3.Encrypt(sourcePath, destPath, password, progress);
+        private const string NotOurs = "Đây không phải file do FolderLocker mã hóa.";
 
-        public OperationResult Decrypt(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite, IProgress<int>? progress) =>
+        public string Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress, CancellationToken ct = default) =>
+            FormatV3.Encrypt(sourcePath, destPath, password, progress, ct);
+
+        public OperationResult Decrypt(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite, IProgress<int>? progress, CancellationToken ct = default) =>
             DetectFormat(encPath) switch
             {
-                EncryptedFormat.V3 => FormatV3.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress),
-                EncryptedFormat.V2 => LegacyFormats.DecryptV2(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress),
+                EncryptedFormat.V3 => FormatV3.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress, ct),
+                EncryptedFormat.V2 => LegacyFormats.DecryptV2(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress, ct),
                 EncryptedFormat.V1 => LegacyFormats.DecryptV1(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite),
-                _ => OperationResult.Fail("Đây không phải file do FolderLocker mã hóa."),
+                _ => OperationResult.Fail(NotOurs),
+            };
+
+        /// <summary>Kiểm tra mật khẩu / mã khôi phục mà không ghi gì ra đĩa.</summary>
+        public OperationResult CheckSecret(string encPath, string passwordOrRecoveryCode) =>
+            DetectFormat(encPath) switch
+            {
+                EncryptedFormat.V3 => FormatV3.CheckSecret(encPath, passwordOrRecoveryCode),
+                EncryptedFormat.V2 => LegacyFormats.CheckSecretV2(encPath, passwordOrRecoveryCode),
+                EncryptedFormat.V1 => LegacyFormats.CheckSecretV1(encPath, passwordOrRecoveryCode),
+                _ => OperationResult.Fail(NotOurs),
             };
 
         /// <summary>

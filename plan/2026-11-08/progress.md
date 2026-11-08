@@ -25,8 +25,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 |-----------|----------|-----------|--------|
 | P8 | U3, U4, U6, U7, U8, U9 + dark mode + F6: dựng lại cửa sổ chính (token màu, bàn phím, nhãn, báo lỗi tại chỗ, độ mạnh mật khẩu) | ✅ | `feat(ui)` |
 | P9 | U2 + F3: dialog mã khôi phục an toàn, lưu ra .txt | ✅ | `feat(ui)` |
-| P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | 🔄 | |
-| P11 | F4 + F8: kiểm tra file .enc trước khi xóa bản gốc, xóa an toàn, lưu cài đặt | ⬜ | |
+| P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | ✅ | `feat` |
+| P11 | F4 + F8: kiểm tra file .enc trước khi xóa bản gốc, xóa an toàn, lưu cài đặt | 🔄 | |
 | P12 | F5: xử lý hàng loạt | ⬜ | |
 | P13 | F1: đổi mật khẩu | ⬜ | |
 | P14 | F9: giữ thời gian tạo/sửa file | ⬜ | |
@@ -58,3 +58,4 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Font Consolas để phân biệt 0/O; nút "Lưu ra file .txt…" (F3), cảnh báo nếu lưu cùng thư mục với .enc.
   - "Xong" chỉ bật sau khi đã sao chép / đã lưu / đã tích xác nhận; Esc/Alt+F4 hỏi lại.
   - Hỗ trợ sẵn nhiều mã (cho batch). Có viền hệ thống và thanh tiêu đề tối theo theme. Đã render ảnh kiểm tra.
+- **P10** — Nút chính chuyển thành "Hủy" khi đang chạy (F2). CancellationToken đi xuống tận vòng lặp chunk/từng file; hủy thì không để lại file nào. Nhãn trạng thái "Đang mã hóa… 42%"; tiến độ thư mục tính theo byte. Đóng app khi đang chạy → hỏi "Hủy và đóng". Giải mã: kiểm tra mật khẩu **trước** khi hỏi thư mục xuất; nhớ thư mục xuất lần trước (`AppSettings`). 67/67 test pass.

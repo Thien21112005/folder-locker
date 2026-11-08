@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Threading;
 using FolderLocker.Models;
 
 namespace FolderLocker.Controllers
@@ -9,7 +10,7 @@ namespace FolderLocker.Controllers
     {
         private readonly LockerModel _model = new LockerModel();
 
-        public OperationResult Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress = null)
+        public OperationResult Encrypt(string sourcePath, string destPath, string password, IProgress<int>? progress = null, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(sourcePath)) return OperationResult.Fail("Chưa chọn file/thư mục!");
             if (string.IsNullOrWhiteSpace(destPath)) return OperationResult.Fail("Chưa chọn nơi lưu file mã hóa!");
@@ -25,8 +26,12 @@ namespace FolderLocker.Controllers
 
             try
             {
-                string recCode = _model.Encrypt(sourcePath, destPath, password, progress);
+                string recCode = _model.Encrypt(sourcePath, destPath, password, progress, ct);
                 return new OperationResult(true, "Mã hóa thành công!", destPath, recCode);
+            }
+            catch (OperationCanceledException)
+            {
+                return OperationResult.Canceled();
             }
             catch (Exception ex)
             {
@@ -34,7 +39,7 @@ namespace FolderLocker.Controllers
             }
         }
 
-        public OperationResult Decrypt(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite = true, IProgress<int>? progress = null)
+        public OperationResult Decrypt(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite = true, IProgress<int>? progress = null, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(encPath)) return OperationResult.Fail("Chưa chọn file .enc!");
             if (string.IsNullOrWhiteSpace(passwordOrRecoveryCode)) return OperationResult.Fail("Chưa nhập mật khẩu hoặc mã khôi phục!");
@@ -43,7 +48,26 @@ namespace FolderLocker.Controllers
 
             try
             {
-                return _model.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress);
+                return _model.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return OperationResult.Canceled();
+            }
+            catch (Exception ex)
+            {
+                return OperationResult.Fail(Describe(ex));
+            }
+        }
+
+        /// <summary>Kiểm tra mật khẩu / mã khôi phục trước khi hỏi nơi xuất (không ghi gì ra đĩa).</summary>
+        public OperationResult CheckSecret(string encPath, string passwordOrRecoveryCode)
+        {
+            if (string.IsNullOrWhiteSpace(passwordOrRecoveryCode)) return OperationResult.Fail("Chưa nhập mật khẩu hoặc mã khôi phục!");
+            if (!File.Exists(encPath)) return OperationResult.Fail("File .enc không tồn tại!");
+            try
+            {
+                return _model.CheckSecret(encPath, passwordOrRecoveryCode);
             }
             catch (Exception ex)
             {

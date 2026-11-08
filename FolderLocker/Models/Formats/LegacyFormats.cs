@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using FolderLocker.Models.Crypto;
 
 namespace FolderLocker.Models.Formats
@@ -23,36 +24,58 @@ namespace FolderLocker.Models.Formats
         // V2
         // ============================================
 
-        public static OperationResult DecryptV2(string encPath, string outputFolder, string secret, bool checkOverwrite, IProgress<int>? progress)
-        {
-            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        private sealed record V2Header(bool IsFolder, byte[] PassEnc, byte[] RecEnc, byte[] Iv);
 
-            bool isFolder;
-            byte[] passEnc, recEnc, iv;
+        private static V2Header? ReadV2Header(Stream fs)
+        {
             try
             {
-                if (ReadByteOrThrow(fs) != VersionV2) return OperationResult.Fail(BadFormat);
-                isFolder = ReadByteOrThrow(fs) == 1;
-                passEnc = new byte[ReadByteOrThrow(fs)];
+                if (ReadByteOrThrow(fs) != VersionV2) return null;
+                bool isFolder = ReadByteOrThrow(fs) == 1;
+                var passEnc = new byte[ReadByteOrThrow(fs)];
                 fs.ReadExactly(passEnc);
-                recEnc = new byte[ReadByteOrThrow(fs)];
+                var recEnc = new byte[ReadByteOrThrow(fs)];
                 fs.ReadExactly(recEnc);
-                iv = new byte[16];
+                var iv = new byte[16];
                 fs.ReadExactly(iv);
+                return new V2Header(isFolder, passEnc, recEnc, iv);
             }
             catch (EndOfStreamException)
             {
-                return OperationResult.Fail(BadFormat);
+                return null;
             }
+        }
 
-            // Mật khẩu dùng nguyên văn; mã khôi phục được chuẩn hóa (khoảng trắng, chữ thường...)
-            byte[]? fileKey = TryUnwrapKey(passEnc, KeyDerivation.LegacySha256(secret))
-                           ?? TryUnwrapKey(recEnc, KeyDerivation.LegacySha256(RecoveryCode.Normalize(secret)));
+        /// <summary>Mật khẩu dùng nguyên văn; mã khôi phục được chuẩn hóa (khoảng trắng, chữ thường...).</summary>
+        private static byte[]? UnlockV2(V2Header h, string secret) =>
+            TryUnwrapKey(h.PassEnc, KeyDerivation.LegacySha256(secret))
+            ?? TryUnwrapKey(h.RecEnc, KeyDerivation.LegacySha256(RecoveryCode.Normalize(secret)));
+
+        public static OperationResult CheckSecretV2(string encPath, string secret)
+        {
+            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var h = ReadV2Header(fs);
+            if (h == null) return OperationResult.Fail(BadFormat);
+            byte[]? key = UnlockV2(h, secret);
+            if (key == null) return OperationResult.Fail("Sai mật khẩu hoặc mã khôi phục!");
+            CryptographicOperations.ZeroMemory(key);
+            return new OperationResult(true, "OK");
+        }
+
+        public static OperationResult DecryptV2(string encPath, string outputFolder, string secret, bool checkOverwrite, IProgress<int>? progress, CancellationToken ct = default)
+        {
+            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            var h = ReadV2Header(fs);
+            if (h == null) return OperationResult.Fail(BadFormat);
+            bool isFolder = h.IsFolder;
+
+            byte[]? fileKey = UnlockV2(h, secret);
             if (fileKey == null) return OperationResult.Fail("Sai mật khẩu hoặc mã khôi phục!");
 
             using var aes = Aes.Create();
             aes.Key = fileKey;
-            aes.IV = iv;
+            aes.IV = h.Iv;
             CryptographicOperations.ZeroMemory(fileKey);
 
             using var cs = new CryptoStream(fs, aes.CreateDecryptor(), CryptoStreamMode.Read);
@@ -64,7 +87,7 @@ namespace FolderLocker.Models.Formats
                 if (checkOverwrite && Directory.Exists(outputPath))
                     return OperationResult.OverwriteNeeded(outputPath);
 
-                PayloadIO.ExtractZipStream(cs, fs, outputPath, progress);
+                PayloadIO.ExtractZipStream(cs, fs, outputPath, progress, ct);
                 return new OperationResult(true, "Giải mã thành công!", outputPath);
             }
             else
@@ -76,7 +99,7 @@ namespace FolderLocker.Models.Formats
                 if (checkOverwrite && File.Exists(outputPath))
                     return OperationResult.OverwriteNeeded(outputPath);
 
-                PayloadIO.WriteFileAtomically(outputPath, dest => PayloadIO.CopyWithProgress(cs, dest, fs, progress));
+                PayloadIO.WriteFileAtomically(outputPath, dest => PayloadIO.CopyWithProgress(cs, dest, fs, progress, ct));
                 return new OperationResult(true, "Giải mã thành công!", outputPath);
             }
         }
@@ -156,26 +179,58 @@ namespace FolderLocker.Models.Formats
         // V1
         // ============================================
 
-        public static OperationResult DecryptV1(string encPath, string outputFolder, string password, bool checkOverwrite)
-        {
-            const string WrongPassword = "Sai mật khẩu! (File định dạng cũ không hỗ trợ mã khôi phục)";
+        private const string WrongPasswordV1 = "Sai mật khẩu! (File định dạng cũ không hỗ trợ mã khôi phục)";
 
-            byte[] data;
-            bool isFolder;
+        /// <summary>Giải mã V1 trong RAM; null nếu sai mật khẩu.</summary>
+        private static (byte[] data, bool isFolder)? DecryptV1Data(string encPath, string password, out string? error)
+        {
+            error = null;
+            byte[] raw = File.ReadAllBytes(encPath);
+            if (raw.Length < 1 + 32) { error = BadFormat; return null; }
             try
             {
-                byte[] raw = File.ReadAllBytes(encPath);
-                if (raw.Length < 1 + 32) return OperationResult.Fail(BadFormat);
-                isFolder = raw[0] == 1;
-
                 using var aes = Aes.Create();
                 aes.Key = KeyDerivation.LegacySha256(password);
-                data = aes.DecryptCbc(raw.AsSpan(17), raw.AsSpan(1, 16));
+                return (aes.DecryptCbc(raw.AsSpan(17), raw.AsSpan(1, 16)), raw[0] == 1);
             }
             catch (CryptographicException)
             {
-                return OperationResult.Fail(WrongPassword);
+                error = WrongPasswordV1;
+                return null;
             }
+        }
+
+        /// <summary>V1 không có key slot: phải giải mã thử trong RAM và kiểm tra cấu trúc payload.</summary>
+        public static OperationResult CheckSecretV1(string encPath, string password)
+        {
+            var result = DecryptV1Data(encPath, password, out string? error);
+            if (result == null) return OperationResult.Fail(error!);
+            try
+            {
+                using var ms = new MemoryStream(result.Value.data);
+                if (result.Value.isFolder)
+                {
+                    using var _ = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+                }
+                else if (PayloadIO.ReadName(ms) == null)
+                {
+                    return OperationResult.Fail(WrongPasswordV1);
+                }
+                return new OperationResult(true, "OK");
+            }
+            catch (Exception ex) when (ex is InvalidDataException or EndOfStreamException)
+            {
+                return OperationResult.Fail(WrongPasswordV1);
+            }
+        }
+
+        public static OperationResult DecryptV1(string encPath, string outputFolder, string password, bool checkOverwrite)
+        {
+            const string WrongPassword = WrongPasswordV1;
+
+            var decrypted = DecryptV1Data(encPath, password, out string? error);
+            if (decrypted == null) return OperationResult.Fail(error!);
+            var (data, isFolder) = decrypted.Value;
 
             try
             {

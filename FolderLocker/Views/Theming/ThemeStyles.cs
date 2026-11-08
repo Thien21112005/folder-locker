@@ -75,8 +75,19 @@ namespace FolderLocker.Views.Theming
             btn.BackColor = Color.Transparent;
         }
 
+        /// <summary>Nút chính ở trạng thái "Hủy": trung tính, không gây cảm giác nguy hiểm.</summary>
+        public static void NeutralGradientButton(Guna2GradientButton btn, Palette p)
+        {
+            btn.FillColor = p.SurfaceHover;
+            btn.FillColor2 = p.SurfaceHover;
+            btn.ForeColor = p.TextPrimary;
+            btn.BorderColor = p.BorderStrong;
+            btn.BorderThickness = 1;
+        }
+
         public static void GradientButton(Guna2GradientButton btn, Palette p, bool encrypt)
         {
+            btn.BorderThickness = 0;
             btn.FillColor = encrypt ? p.EncryptFrom : p.DecryptFrom;
             btn.FillColor2 = encrypt ? p.EncryptTo : p.DecryptTo;
             btn.ForeColor = p.TextOnAccent;

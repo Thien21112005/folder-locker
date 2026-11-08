@@ -28,6 +28,7 @@ namespace FolderLocker.Views
         private System.Windows.Forms.Label lblMismatch = null!;
         private Guna.UI2.WinForms.Guna2CheckBox chkDeleteOriginal = null!;
         private Guna.UI2.WinForms.Guna2GradientButton btnAction = null!;
+        private System.Windows.Forms.Label lblStatus = null!;
         private Guna.UI2.WinForms.Guna2ProgressBar progressBar = null!;
         private System.Windows.Forms.ToolTip toolTip = null!;
 
@@ -68,6 +69,7 @@ namespace FolderLocker.Views
             this.lblMismatch = new System.Windows.Forms.Label();
             this.chkDeleteOriginal = new Guna.UI2.WinForms.Guna2CheckBox();
             this.btnAction = new Guna.UI2.WinForms.Guna2GradientButton();
+            this.lblStatus = new System.Windows.Forms.Label();
             this.progressBar = new Guna.UI2.WinForms.Guna2ProgressBar();
             this.toolTip = new System.Windows.Forms.ToolTip(this.components);
 
@@ -150,6 +152,7 @@ namespace FolderLocker.Views
             this.flowMain.Controls.Add(this.lblMismatch);
             this.flowMain.Controls.Add(this.chkDeleteOriginal);
             this.flowMain.Controls.Add(this.btnAction);
+            this.flowMain.Controls.Add(this.lblStatus);
             this.flowMain.Controls.Add(this.progressBar);
 
             // dropZone
@@ -295,6 +298,15 @@ namespace FolderLocker.Views
             this.btnAction.TabIndex = 4;
             this.btnAction.Text = "Mã hóa";
             this.btnAction.Click += new System.EventHandler(this.btnAction_Click);
+
+            // lblStatus
+            this.lblStatus.AutoSize = false;
+            this.lblStatus.Margin = new System.Windows.Forms.Padding(0, 0, 0, 6);
+            this.lblStatus.Name = "lblStatus";
+            this.lblStatus.Size = new System.Drawing.Size(402, 18);
+            this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblStatus.Visible = false;
+            this.lblStatus.AccessibleRole = System.Windows.Forms.AccessibleRole.StatusBar;
 
             // progressBar
             this.progressBar.BorderRadius = 3;
