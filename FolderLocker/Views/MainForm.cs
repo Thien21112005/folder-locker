@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using FolderLocker.Controllers;
 using FolderLocker.Models;
+using FolderLocker.Views.Theming;
+using Guna.UI2.WinForms;
 
 namespace FolderLocker.Views
 {
@@ -12,56 +14,139 @@ namespace FolderLocker.Views
     {
         private const char MaskChar = '●';
 
-        private static readonly Color EncryptIconColor = Color.FromArgb(94, 148, 255);
-        private static readonly Color DecryptIconColor = Color.FromArgb(46, 204, 113);
-
-        // Cache 2 bitmap icon con mắt (trước đây tạo Bitmap mới mỗi lần bấm → rò rỉ GDI)
-        private static readonly Bitmap EyeOpenIcon = DrawEyeIcon(true);
-        private static readonly Bitmap EyeClosedIcon = DrawEyeIcon(false);
-
         private readonly LockerController _controller = new LockerController();
         private string _selectedPath = "";
         private bool _isEncryptMode = true;
-        private bool _isRecoveryMode = false;
-        private bool _isBusy = false;
+        private bool _isBusy;
 
         public MainForm()
         {
             InitializeComponent();
             AcceptButton = btnAction;
+            ApplyFonts();
+
+            Theme.Changed += OnThemeChanged;
+            FormClosed += (_, _) => Theme.Changed -= OnThemeChanged;
             FormClosing += MainForm_FormClosing;
+            Activated += (_, _) => UpdateCapsLock();
+
+            toolTip.SetToolTip(btnSettings, "Cài đặt và trợ giúp");
+            toolTip.SetToolTip(dropZone, "Nhấn Enter hoặc Ctrl+O để chọn");
+
             ResetForm();
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            UpdateFormHeight();
+            ActiveControl = dropZone;
+        }
+
+        // ============================================
+        // THEME
+        // ============================================
+
+        private void OnThemeChanged(object? sender, EventArgs e)
+        {
+            if (IsHandleCreated) BeginInvoke(ApplyTheme);
+        }
+
+        private void ApplyFonts()
+        {
+            lblTitle.Font = Theme.Heading;
+            btnSettings.Font = Theme.IconFont(11F);
+            btnSettings.Text = Theme.GlyphSettings.ToString();
+            lblIcon.Font = Theme.IconFont(34F);
+            lblDragDrop.Font = Theme.Body;
+            lblSelectedPath.Font = Theme.BodyStrong;
+            lblPassword.Font = Theme.Small;
+            lblConfirm.Font = Theme.Small;
+            txtPassword.Font = Theme.Body;
+            txtConfirmPassword.Font = Theme.Body;
+            lblCapsLock.Font = Theme.Small;
+            lblStrength.Font = Theme.Small;
+            lblMismatch.Font = Theme.Small;
+            chkDeleteOriginal.Font = Theme.Small;
+            btnAction.Font = Theme.BodyStrong;
+        }
+
+        private void ApplyTheme()
+        {
+            var p = Theme.Current;
+
+            BackColor = p.Background;
+            lblTitle.ForeColor = p.TextPrimary;
+            ThemeStyles.LinkButton(btnSettings, p);
+            btnSettings.ForeColor = p.TextSecondary;
+            ThemeStyles.ControlBox(btnMinimize, p);
+            ThemeStyles.ControlBox(btnClose, p);
+            ThemeStyles.Menu(menuSettings, p);
+
+            dropZone.SetColors(p.Border, p.Focus, p.Surface, p.DropTint);
+            lblDragDrop.ForeColor = p.TextSecondary;
+            lblSelectedPath.ForeColor = p.TextPrimary;
+            lblIcon.ForeColor = _isEncryptMode ? p.Link : p.Success;
+
+            lblPassword.ForeColor = p.TextPrimary;
+            lblConfirm.ForeColor = p.TextPrimary;
+            ThemeStyles.TextBox(txtPassword, p);
+            ThemeStyles.TextBox(txtConfirmPassword, p);
+            lblCapsLock.ForeColor = p.Warning;
+            ThemeStyles.CheckBox(chkDeleteOriginal, p);
+            ThemeStyles.GradientButton(btnAction, p, _isEncryptMode);
+            ThemeStyles.ProgressBar(progressBar, p, _isEncryptMode ? p.EncryptFrom : p.Success);
+
+            // Icon con mắt vẽ lại theo màu theme
+            SetMasked(txtPassword, IsMasked(txtPassword));
+            SetMasked(txtConfirmPassword, IsMasked(txtConfirmPassword));
+
+            UpdateValidation();
+            Invalidate(true);
         }
 
         // ============================================
         // CHỌN FILE / FOLDER
         // ============================================
 
-        private void pnlDragDrop_DragEnter(object? sender, DragEventArgs e)
+        private void dropZone_DragEnter(object? sender, DragEventArgs e)
         {
             if (!_isBusy && e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
+            {
                 e.Effect = DragDropEffects.Copy;
+                dropZone.IsDragTarget = true;
+            }
         }
 
-        private void pnlDragDrop_DragDrop(object? sender, DragEventArgs e)
+        private void dropZone_DragLeave(object? sender, EventArgs e) => dropZone.IsDragTarget = false;
+
+        private void dropZone_DragDrop(object? sender, DragEventArgs e)
         {
+            dropZone.IsDragTarget = false;
             if (_isBusy) return;
             if (e.Data?.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
+            {
+                if (files.Length > 1)
+                    Dialogs.Info(this, "Đã chọn mục đầu tiên", $"Bạn thả {files.Length} mục; hiện chỉ xử lý: {Path.GetFileName(files[0])}");
                 SetSelectedPath(files[0]);
+            }
         }
 
-        private void pnlDragDrop_Click(object? sender, EventArgs e)
+        private void dropZone_Activated(object? sender, EventArgs e) => ChooseInput();
+
+        private void ChooseInput()
         {
             if (_isBusy) return;
 
-            var btnFile = new TaskDialogCommandLinkButton("Chọn File", "Mã hóa hoặc giải mã một tập tin đơn lẻ");
-            var btnFolder = new TaskDialogCommandLinkButton("Chọn Thư mục (Folder)", "Mã hóa hoặc giải mã toàn bộ một thư mục");
+            var btnFile = new TaskDialogCommandLinkButton("Chọn file", "Mã hóa một file, hoặc giải mã một file .enc");
+            var btnFolder = new TaskDialogCommandLinkButton("Chọn thư mục", "Mã hóa toàn bộ một thư mục");
 
             var page = new TaskDialogPage()
             {
-                Caption = "Chọn dữ liệu",
-                Heading = "Bạn muốn chọn loại dữ liệu nào?",
-                Buttons = new TaskDialogButtonCollection() { btnFile, btnFolder, TaskDialogButton.Cancel }
+                Caption = "Folder Locker",
+                Heading = "Bạn muốn chọn gì?",
+                Buttons = new TaskDialogButtonCollection() { btnFile, btnFolder, TaskDialogButton.Cancel },
+                AllowCancel = true,
             };
 
             var result = TaskDialog.ShowDialog(this, page);
@@ -70,14 +155,15 @@ namespace FolderLocker.Views
             {
                 using var fileDialog = new OpenFileDialog();
                 fileDialog.Title = "Chọn file";
-                fileDialog.Filter = "Tất cả file (*.*)|*.*";
+                fileDialog.Filter = "Tất cả file (*.*)|*.*|File đã mã hóa (*.enc)|*.enc";
                 if (fileDialog.ShowDialog(this) == DialogResult.OK)
                     SetSelectedPath(fileDialog.FileName);
             }
             else if (result == btnFolder)
             {
                 using var folderDialog = new FolderBrowserDialog();
-                folderDialog.Description = "Chọn thư mục";
+                folderDialog.Description = "Chọn thư mục cần mã hóa";
+                folderDialog.UseDescriptionForTitle = true;
                 if (folderDialog.ShowDialog(this) == DialogResult.OK)
                     SetSelectedPath(folderDialog.SelectedPath);
             }
@@ -86,100 +172,157 @@ namespace FolderLocker.Views
         private void SetSelectedPath(string path)
         {
             _selectedPath = path;
-            lblSelectedPath.Text = Path.GetFileName(path);
-            if (string.IsNullOrEmpty(lblSelectedPath.Text)) lblSelectedPath.Text = path;
-            lblSelectedPath.Visible = true;
-            lblDragDrop.Visible = false;
-
             bool isFolder = Directory.Exists(path);
             ApplyMode(encrypt: isFolder || !_controller.IsEncryptedFile(path));
 
-            if (_isEncryptMode)
-            {
-                lblIcon.Text = isFolder ? "" : ""; // Folder / File icon
-                lblIcon.ForeColor = EncryptIconColor;
-            }
-            else
-            {
-                lblIcon.Text = ""; // Lock icon
-                lblIcon.ForeColor = DecryptIconColor;
-            }
-            lblIcon.Visible = true;
+            string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+            if (string.IsNullOrEmpty(name)) name = path;
+            string kind = isFolder ? "Thư mục"
+                : !_isEncryptMode ? "File đã mã hóa"
+                : "File · " + FormatSize(new FileInfo(path).Length);
+
+            lblSelectedPath.Text = name;
+            lblSelectedPath.Visible = true;
+            lblDragDrop.Text = kind;
+            lblDragDrop.Font = Theme.Small;
+            toolTip.SetToolTip(lblSelectedPath, path);
+            dropZone.AccessibleDescription = $"Đã chọn: {name} ({kind}). Nhấn Enter để chọn lại.";
+
+            lblIcon.Text = (_isEncryptMode ? (isFolder ? Theme.GlyphFolder : Theme.GlyphFile) : Theme.GlyphLock).ToString();
+            lblIcon.ForeColor = _isEncryptMode ? Theme.Current.Link : Theme.Current.Success;
+
+            txtPassword.Focus();
+        }
+
+        private static string FormatSize(long bytes)
+        {
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            double size = bytes;
+            int unit = 0;
+            while (size >= 1024 && unit < units.Length - 1) { size /= 1024; unit++; }
+            return unit == 0 ? $"{bytes} B" : $"{size:0.#} {units[unit]}";
         }
 
         // ============================================
         // TRẠNG THÁI FORM (một nơi duy nhất quản lý)
         // ============================================
 
-        /// <summary>Chuyển giao diện giữa chế độ mã hóa và giải mã; luôn reset chế độ mã khôi phục.</summary>
+        /// <summary>Chuyển giao diện giữa chế độ mã hóa và giải mã.</summary>
         private void ApplyMode(bool encrypt)
         {
             _isEncryptMode = encrypt;
 
-            if (encrypt)
-            {
-                btnAction.Text = "MÃ HÓA DỮ LIỆU";
-                btnAction.FillColor = Color.FromArgb(74, 110, 255);
-                btnAction.FillColor2 = Color.FromArgb(148, 94, 255);
-            }
-            else
-            {
-                btnAction.Text = "GIẢI MÃ DỮ LIỆU";
-                btnAction.FillColor = Color.FromArgb(46, 204, 113);
-                btnAction.FillColor2 = Color.FromArgb(26, 188, 156);
-            }
+            btnAction.Text = encrypt ? "Mã hóa dữ liệu" : "Giải mã dữ liệu";
+            btnAction.AccessibleName = btnAction.Text;
 
+            // Giải mã: một ô duy nhất nhận cả mật khẩu lẫn mã khôi phục
+            lblPassword.Text = encrypt ? "Mật khẩu" : "Mật khẩu hoặc mã khôi phục";
+            txtPassword.AccessibleName = lblPassword.Text;
+            txtPassword.PlaceholderText = encrypt
+                ? $"Tối thiểu {PasswordStrength.MinLength} ký tự"
+                : "Nhập mật khẩu hoặc mã FL-XXXX-XXXX-XXXX";
+
+            strengthBar.Visible = encrypt;
+            lblStrength.Visible = encrypt;
+            lblConfirm.Visible = encrypt;
             txtConfirmPassword.Visible = encrypt;
+            lblMismatch.Visible = encrypt;
             chkDeleteOriginal.Visible = encrypt;
-            lblForgotPassword.Visible = !encrypt;
 
-            SetRecoveryMode(false);
+            SetMasked(txtPassword, true);
             SetMasked(txtConfirmPassword, true);
+
+            var p = Theme.Current;
+            ThemeStyles.GradientButton(btnAction, p, encrypt);
+            ThemeStyles.ProgressBar(progressBar, p, encrypt ? p.EncryptFrom : p.Success);
+
+            UpdateValidation();
+            UpdateFormHeight();
         }
 
-        private void SetRecoveryMode(bool recovery)
+        private void UpdateFormHeight()
         {
-            _isRecoveryMode = recovery;
-            if (recovery)
-            {
-                lblForgotPassword.Text = "Đã nhớ mật khẩu? Dùng mật khẩu";
-                txtPassword.PlaceholderText = "Nhập mã khôi phục (FL-XXXX-XXXX-XXXX)";
-                txtPassword.UseSystemPasswordChar = false;
-                txtPassword.PasswordChar = '\0';
-                txtPassword.IconRight = null;
-            }
-            else
-            {
-                lblForgotPassword.Text = "Quên mật khẩu? Dùng mã khôi phục";
-                txtPassword.PlaceholderText = "Mật khẩu";
-                SetMasked(txtPassword, true);
-            }
+            flowMain.PerformLayout();
+            ClientSize = new Size(ClientSize.Width, flowMain.Bottom + LogicalToDeviceUnits(22));
         }
 
-        private static void SetMasked(Guna.UI2.WinForms.Guna2TextBox box, bool masked)
+        private void SetMasked(Guna2TextBox box, bool masked)
         {
             box.UseSystemPasswordChar = masked;
             box.PasswordChar = masked ? MaskChar : '\0';
-            box.IconRight = masked ? EyeClosedIcon : EyeOpenIcon;
+            int px = LogicalToDeviceUnits(20);
+            box.IconRight = Theme.Glyph(masked ? Theme.GlyphView : Theme.GlyphHide, Theme.Current.TextSecondary, px);
+            box.IconRightSize = new Size(px, px);
+            toolTip.SetToolTip(box, masked ? "Hiện mật khẩu (Alt+H)" : "Ẩn mật khẩu (Alt+H)");
         }
 
-        private static bool IsMasked(Guna.UI2.WinForms.Guna2TextBox box) =>
+        private static bool IsMasked(Guna2TextBox box) =>
             box.PasswordChar == MaskChar || box.UseSystemPasswordChar;
+
+        /// <summary>Độ mạnh mật khẩu + kiểm tra khớp ngay khi gõ.</summary>
+        private void UpdateValidation()
+        {
+            var p = Theme.Current;
+
+            if (_isEncryptMode)
+            {
+                var level = PasswordStrength.Evaluate(txtPassword.Text);
+                Color color = level switch
+                {
+                    StrengthLevel.TooShort or StrengthLevel.Weak => p.Danger,
+                    StrengthLevel.Fair => p.Warning,
+                    _ => p.Success,
+                };
+                strengthBar.Value = PasswordStrength.Percent(level);
+                ThemeStyles.ProgressBar(strengthBar, p, color);
+                lblStrength.Text = level == StrengthLevel.Empty ? "" : "Độ mạnh: " + PasswordStrength.Describe(level);
+                lblStrength.ForeColor = color;
+                strengthBar.AccessibleDescription = lblStrength.Text;
+
+                if (txtConfirmPassword.Text.Length == 0)
+                {
+                    lblMismatch.Text = "";
+                }
+                else if (txtConfirmPassword.Text == txtPassword.Text)
+                {
+                    lblMismatch.Text = "✓ Mật khẩu đã khớp";
+                    lblMismatch.ForeColor = p.Success;
+                }
+                else
+                {
+                    lblMismatch.Text = "Mật khẩu xác nhận chưa khớp";
+                    lblMismatch.ForeColor = p.Danger;
+                }
+            }
+
+            UpdateCapsLock();
+        }
+
+        private void UpdateCapsLock()
+        {
+            bool typing = txtPassword.ContainsFocus || txtConfirmPassword.ContainsFocus;
+            lblCapsLock.Text = typing && IsKeyLocked(Keys.CapsLock) ? "⚠ Caps Lock đang bật" : "";
+        }
+
+        private void PasswordFields_TextChanged(object? sender, EventArgs e) => UpdateValidation();
+        private void PasswordFields_KeyUp(object? sender, KeyEventArgs e) => UpdateCapsLock();
+        private void PasswordFields_Enter(object? sender, EventArgs e) => UpdateCapsLock();
 
         /// <summary>Khóa/mở toàn bộ input trong lúc đang xử lý.</summary>
         private void SetBusy(bool busy)
         {
             _isBusy = busy;
-            pnlDragDrop.AllowDrop = !busy;
-            pnlDragDrop.Enabled = !busy;
+            dropZone.AllowDrop = !busy;
+            dropZone.Enabled = !busy;
             txtPassword.Enabled = !busy;
             txtConfirmPassword.Enabled = !busy;
             chkDeleteOriginal.Enabled = !busy;
-            lblForgotPassword.Enabled = !busy;
             btnAction.Enabled = !busy;
+            btnSettings.Enabled = !busy;
             btnClose.Enabled = !busy;
             UseWaitCursor = busy;
             if (!busy) progressBar.Visible = false;
+            UpdateFormHeight();
         }
 
         private void ResetForm()
@@ -187,12 +330,14 @@ namespace FolderLocker.Views
             _selectedPath = "";
             lblSelectedPath.Text = "";
             lblSelectedPath.Visible = false;
-            lblIcon.Visible = false;
-            lblDragDrop.Visible = true;
-            lblDragDrop.Text = "Kéo & Thả File/Folder vào đây\nHoặc click để chọn";
+            lblDragDrop.Text = "Kéo thả file hoặc thư mục vào đây\nhoặc nhấn để chọn";
+            lblDragDrop.Font = Theme.Body;
+            lblIcon.Text = Theme.GlyphUpload.ToString();
+            dropZone.AccessibleDescription = "Nhấn Enter để chọn, hoặc kéo thả file hay thư mục vào đây.";
             txtPassword.Clear();
             txtConfirmPassword.Clear();
             ApplyMode(encrypt: true);
+            ApplyTheme();
         }
 
         private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -200,43 +345,55 @@ namespace FolderLocker.Views
             if (_isBusy && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
-                MessageBox.Show(this, "Đang xử lý dữ liệu, vui lòng đợi hoàn tất trước khi đóng.", "Thông báo",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Dialogs.Info(this, "Đang xử lý dữ liệu", "Vui lòng đợi hoàn tất trước khi đóng.");
             }
         }
 
-        private void lblForgotPassword_Click(object? sender, EventArgs e)
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if (_isBusy) return;
-            SetRecoveryMode(!_isRecoveryMode);
+            if (!_isBusy)
+            {
+                switch (keyData)
+                {
+                    case Keys.Control | Keys.O:
+                        ChooseInput();
+                        return true;
+                    case Keys.Alt | Keys.H:
+                        var box = txtConfirmPassword.ContainsFocus ? txtConfirmPassword : txtPassword;
+                        SetMasked(box, !IsMasked(box));
+                        return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        private void txtPassword_IconRightClick(object? sender, EventArgs e)
-        {
-            if (_isRecoveryMode) return;
+        private void txtPassword_IconRightClick(object? sender, EventArgs e) =>
             SetMasked(txtPassword, !IsMasked(txtPassword));
-        }
 
-        private void txtConfirmPassword_IconRightClick(object? sender, EventArgs e)
-        {
+        private void txtConfirmPassword_IconRightClick(object? sender, EventArgs e) =>
             SetMasked(txtConfirmPassword, !IsMasked(txtConfirmPassword));
-        }
 
-        private static Bitmap DrawEyeIcon(bool open)
-        {
-            var bmp = new Bitmap(24, 24);
-            using var g = Graphics.FromImage(bmp);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var pen = new Pen(Color.Gray, 2);
-            g.DrawCurve(pen, new[] { new Point(2, 12), new Point(12, 4), new Point(22, 12) });
-            g.DrawCurve(pen, new[] { new Point(2, 12), new Point(12, 20), new Point(22, 12) });
+        // ============================================
+        // MENU CÀI ĐẶT / TRỢ GIÚP
+        // ============================================
 
-            if (open)
-                g.DrawEllipse(pen, 9, 9, 6, 6);
-            else
-                g.DrawLine(pen, 4, 4, 20, 20);
-            return bmp;
-        }
+        private void btnSettings_Click(object? sender, EventArgs e) =>
+            menuSettings.Show(btnSettings, new Point(btnSettings.Width - menuSettings.Width, btnSettings.Height));
+
+        private void mnuHelpRecovery_Click(object? sender, EventArgs e) =>
+            Dialogs.Info(this, "Mã khôi phục là gì?",
+                "Mỗi lần mã hóa, Folder Locker tạo một mã khôi phục dạng FL-XXXX-XXXX-XXXX.\n\n" +
+                "• Mã này mở được file .enc khi bạn quên mật khẩu.\n" +
+                "• Mã chỉ hiển thị một lần, ngay sau khi mã hóa xong.\n" +
+                "• Ai có mã đều mở được file, nên hãy cất ở nơi an toàn, tách biệt với file .enc.\n\n" +
+                "Khi giải mã, nhập mật khẩu hoặc mã khôi phục vào cùng một ô.");
+
+        private void mnuHelpShortcuts_Click(object? sender, EventArgs e) =>
+            Dialogs.Info(this, "Phím tắt",
+                "Ctrl+O\tChọn file hoặc thư mục\n" +
+                "Enter\tMã hóa / giải mã\n" +
+                "Alt+H\tHiện / ẩn mật khẩu đang nhập\n" +
+                "Tab\tChuyển giữa các ô");
 
         // ============================================
         // HÀNH ĐỘNG CHÍNH
@@ -248,21 +405,12 @@ namespace FolderLocker.Views
 
             if (string.IsNullOrEmpty(_selectedPath))
             {
-                MessageBox.Show(this, "Vui lòng chọn hoặc kéo thả File/Folder!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Dialogs.Warn(this, "Chưa chọn dữ liệu", "Hãy kéo thả hoặc chọn một file / thư mục trước.");
+                dropZone.Focus();
                 return;
             }
 
-            if (string.IsNullOrEmpty(txtPassword.Text))
-            {
-                MessageBox.Show(this, "Vui lòng nhập " + (_isRecoveryMode ? "mã khôi phục" : "mật khẩu") + "!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (_isEncryptMode && txtPassword.Text != txtConfirmPassword.Text)
-            {
-                MessageBox.Show(this, "Mật khẩu xác nhận không khớp!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+            if (!ValidateInputs()) return;
 
             try
             {
@@ -275,8 +423,46 @@ namespace FolderLocker.Views
             {
                 // async void: exception không được bắt sẽ làm sập app
                 SetBusy(false);
-                MessageBox.Show(this, "Đã xảy ra lỗi: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Dialogs.Error(this, "Đã xảy ra lỗi", ex.Message);
             }
+        }
+
+        private bool ValidateInputs()
+        {
+            if (string.IsNullOrEmpty(txtPassword.Text))
+            {
+                Dialogs.Warn(this, _isEncryptMode ? "Chưa nhập mật khẩu" : "Chưa nhập mật khẩu hoặc mã khôi phục");
+                txtPassword.Focus();
+                return false;
+            }
+
+            if (!_isEncryptMode) return true;
+
+            var level = PasswordStrength.Evaluate(txtPassword.Text);
+            if (level == StrengthLevel.TooShort)
+            {
+                Dialogs.Warn(this, "Mật khẩu quá ngắn", $"Mật khẩu cần tối thiểu {PasswordStrength.MinLength} ký tự.");
+                txtPassword.Focus();
+                return false;
+            }
+
+            if (txtPassword.Text != txtConfirmPassword.Text)
+            {
+                Dialogs.Warn(this, "Mật khẩu xác nhận chưa khớp", "Hãy nhập lại mật khẩu ở ô xác nhận.");
+                txtConfirmPassword.Focus();
+                return false;
+            }
+
+            if (level == StrengthLevel.Weak &&
+                !Dialogs.Confirm(this, "Mật khẩu yếu",
+                    "Mật khẩu này dễ bị đoán (quá phổ biến hoặc lặp lại). Nên dùng cụm từ dài, có chữ hoa, số và ký tự đặc biệt.",
+                    "Vẫn dùng mật khẩu này", "Đổi mật khẩu", dangerous: true))
+            {
+                txtPassword.Focus();
+                return false;
+            }
+
+            return true;
         }
 
         private Progress<int> StartProgress()
@@ -284,6 +470,7 @@ namespace FolderLocker.Views
             SetBusy(true);
             progressBar.Value = 0;
             progressBar.Visible = true;
+            UpdateFormHeight();
             return new Progress<int>(percent => progressBar.Value = Math.Clamp(percent, 0, 100));
         }
 
@@ -291,7 +478,7 @@ namespace FolderLocker.Views
         {
             using var saveDialog = new SaveFileDialog();
             saveDialog.Title = "Lưu file mã hóa";
-            saveDialog.Filter = "Encrypted file (*.enc)|*.enc";
+            saveDialog.Filter = "File đã mã hóa (*.enc)|*.enc";
             saveDialog.FileName = Path.GetFileName(Path.TrimEndingDirectorySeparator(_selectedPath)) + ".enc";
 
             if (saveDialog.ShowDialog(this) != DialogResult.OK) return;
@@ -314,7 +501,7 @@ namespace FolderLocker.Views
 
             if (!result.Success)
             {
-                MessageBox.Show(this, result.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Dialogs.Error(this, "Mã hóa thất bại", result.Message);
                 return;
             }
 
@@ -325,8 +512,7 @@ namespace FolderLocker.Views
             {
                 var del = _controller.DeleteSource(source);
                 if (!del.Success)
-                    MessageBox.Show(this, del.Message + "\nFile mã hóa vẫn đã được tạo: " + dest, "Cảnh báo",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    Dialogs.Warn(this, del.Message, "File mã hóa vẫn đã được tạo: " + dest);
             }
 
             ResetForm();
@@ -335,7 +521,8 @@ namespace FolderLocker.Views
         private async Task DecryptData()
         {
             using var folderDialog = new FolderBrowserDialog();
-            folderDialog.Description = "Chọn nơi xuất file/folder sau khi giải mã";
+            folderDialog.Description = "Chọn nơi lưu dữ liệu sau khi giải mã";
+            folderDialog.UseDescriptionForTitle = true;
 
             if (folderDialog.ShowDialog(this) != DialogResult.OK) return;
 
@@ -347,20 +534,22 @@ namespace FolderLocker.Views
 
             if (result.NeedsOverwriteConfirm)
             {
-                var confirm = MessageBox.Show(this, $"File/Folder '{result.OutputPath}' đã tồn tại.\nBạn có muốn ghi đè không?",
-                    "Xác nhận ghi đè", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                if (confirm != DialogResult.Yes) return;
+                if (!Dialogs.Confirm(this, "Đích đã tồn tại", $"'{result.OutputPath}' đã tồn tại. Ghi đè sẽ thay thế hoàn toàn nội dung cũ.",
+                        "Ghi đè", "Giữ nguyên", dangerous: true))
+                    return;
 
                 result = await RunDecrypt(source, outFolder, pass, checkOverwrite: false);
             }
 
             if (!result.Success)
             {
-                MessageBox.Show(this, result.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Dialogs.Error(this, "Giải mã thất bại", result.Message);
+                txtPassword.Focus();
+                txtPassword.SelectAll();
                 return;
             }
 
-            MessageBox.Show(this, result.Message + "\n" + result.OutputPath, "Thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            Dialogs.SuccessWithOpen(this, "Giải mã thành công", result.OutputPath ?? outFolder);
             ResetForm();
         }
 
@@ -387,14 +576,14 @@ namespace FolderLocker.Views
             f.ShowInTaskbar = false;
 
             using var components = new System.ComponentModel.Container();
-            var borderless = new Guna.UI2.WinForms.Guna2BorderlessForm(components);
+            var borderless = new Guna2BorderlessForm(components);
             borderless.ContainerControl = f;
             borderless.BorderRadius = 15;
 
             var lblTitle = new Label() { Text = message, Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI Semibold", 16, FontStyle.Bold), ForeColor = Color.FromArgb(46, 204, 113) };
             var lblSub = new Label() { Text = "Yêu cầu lưu trữ bảo mật Mã khôi phục hệ thống dưới đây:", Location = new Point(20, 60), AutoSize = true, Font = new Font("Segoe UI", 10), ForeColor = Color.Gray };
 
-            var txt = new Guna.UI2.WinForms.Guna2TextBox()
+            var txt = new Guna2TextBox()
             {
                 Text = recoveryCode,
                 Location = new Point(20, 95),
@@ -406,8 +595,8 @@ namespace FolderLocker.Views
                 ForeColor = Color.FromArgb(50, 50, 50)
             };
 
-            var btnCopy = new Guna.UI2.WinForms.Guna2Button() { Text = "Copy Mã", Location = new Point(20, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(74, 110, 255), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
-            var btnOk = new Guna.UI2.WinForms.Guna2Button() { Text = "XONG", Location = new Point(230, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(230, 230, 230), ForeColor = Color.FromArgb(100, 100, 100), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
+            var btnCopy = new Guna2Button() { Text = "Copy Mã", Location = new Point(20, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(74, 110, 255), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
+            var btnOk = new Guna2Button() { Text = "XONG", Location = new Point(230, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(230, 230, 230), ForeColor = Color.FromArgb(100, 100, 100), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
 
             btnCopy.Click += (s, e) =>
             {
@@ -419,10 +608,7 @@ namespace FolderLocker.Views
                 }
                 catch (System.Runtime.InteropServices.ExternalException)
                 {
-                    // Clipboard đang bị chương trình khác giữ
                     btnCopy.Text = "Thử lại";
-                    MessageBox.Show(f, "Không truy cập được clipboard. Hãy thử lại hoặc chép mã thủ công.", "Thông báo",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             };
 
@@ -434,14 +620,6 @@ namespace FolderLocker.Views
             f.Controls.Add(btnCopy);
             f.Controls.Add(btnOk);
             f.AcceptButton = btnOk;
-
-            f.Load += (s, e) =>
-            {
-                f.ActiveControl = btnCopy;
-                txt.SelectionStart = 0;
-                txt.SelectionLength = 0;
-            };
-
             f.ShowDialog(this);
         }
     }

@@ -2,6 +2,8 @@
 
 Chú thích: ⬜ chưa làm · 🔄 đang làm · ✅ xong · ⏭️ bỏ qua/hoãn
 
+## Đợt 1 — Sửa lỗi
+
 | Giai đoạn | Nội dung | Trạng thái | Commit |
 |-----------|----------|-----------|--------|
 | P0 | Lập plan (bugfix, features, UI) | ✅ | `docs(plan)` |
@@ -11,7 +13,28 @@ Chú thích: ⬜ chưa làm · 🔄 đang làm · ✅ xong · ⏭️ bỏ qua/ho
 | P4 | Dọn warning | ✅ | `build` |
 | P5 | Unit test | ✅ | `test` |
 | P6 | Tài liệu | ✅ | `docs` |
-| P7 | Cải thiện giao diện (U2–U8) | ⏭️ đợt sau — xem ui-plan.md | |
+
+## Đợt 2 — Giao diện + tính năng mở rộng
+
+Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong ui-plan:
+- Gộp thành **một ô** "Mật khẩu hoặc mã khôi phục", bỏ nút chuyển "Quên mật khẩu?".
+- Có **dark mode** theo theme Windows, làm cùng U4.
+- Chưa bắt lưu mã khôi phục *trước* khi mã hóa. Thay vào đó, dialog sau khi mã hóa chặn đóng cho tới khi đã lưu hoặc đã xác nhận (U2).
+
+| Giai đoạn | Nội dung | Trạng thái | Commit |
+|-----------|----------|-----------|--------|
+| P8 | U3, U4, U6, U7, U8, U9 + dark mode + F6: dựng lại cửa sổ chính (token màu, bàn phím, nhãn, báo lỗi tại chỗ, độ mạnh mật khẩu) | ✅ | `feat(ui)` |
+| P9 | U2 + F3: dialog mã khôi phục an toàn, lưu ra .txt | 🔄 | |
+| P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | ⬜ | |
+| P11 | F4 + F8: kiểm tra file .enc trước khi xóa bản gốc, xóa an toàn, lưu cài đặt | ⬜ | |
+| P12 | F5: xử lý hàng loạt | ⬜ | |
+| P13 | F1: đổi mật khẩu | ⬜ | |
+| P14 | F9: giữ thời gian tạo/sửa file | ⬜ | |
+| P15 | F10: nhật ký hoạt động | ⬜ | |
+| P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | ⬜ | |
+| P17 | F11: CLI | ⬜ | |
+| P18 | F12: GitHub Actions | ⬜ | |
+| P19 | Polish UI, chụp kiểm tra, cập nhật tài liệu | ⬜ | |
 
 ## Nhật ký
 - **2026-11-08** — Review code, build OK (0 lỗi, 23 warning). Chạy critique giao diện bằng impeccable. Lập plan.
@@ -21,10 +44,12 @@ Chú thích: ⬜ chưa làm · 🔄 đang làm · ✅ xong · ⏭️ bỏ qua/ho
 - **P4** — Warning đã về 0 trong lúc làm P1–P3 (23 → 0). Bật `TreatWarningsAsErrors` để không phát sinh lại.
 - **P5** — Project `FolderLocker.Tests` (xUnit), **45/45 pass**. Bao gồm: round-trip file (0 byte → 2 MB+, biên chunk), folder có thư mục rỗng và tên Unicode, sai mật khẩu, mã khôi phục nhiều kiểu nhập, sửa byte ở header/slot/dữ liệu/tag, cắt cụt, đảo chunk, V1/V2 cũ, tên độc hại trong payload, lưu đích trong nguồn, ghi đè thay thế folder, mã hóa lỗi không để lại file, nhận diện theo header.
 - **P6** — README (song ngữ) mô tả đúng V3, cấu trúc thư mục mới, lệnh build/test. user_guide viết lại theo luồng thực tế, kèm bảng xử lý sự cố.
-- **Kết thúc đợt 2026-11-08** — 13/13 lỗi đã sửa, 45/45 test pass, build 0 warning. Còn lại: UI U2–U8 ([ui-plan.md](ui-plan.md)) và tính năng F1–F12 ([features-plan.md](features-plan.md)).
-
-## Việc tiếp theo đề xuất
-1. U2 + F3: dialog mã khôi phục (cảnh báo "chỉ hiện một lần", lưu ra .txt, chặn đóng khi chưa lưu).
-2. U3 + U4: bàn phím/trình đọc màn hình + độ tương phản, lớp `Theme`.
-3. F1: đổi mật khẩu (format V3 đã sẵn sàng).
-4. F2: nút Hủy.
+- **Kết thúc đợt 1** — 13/13 lỗi đã sửa, 45/45 test pass, build 0 warning.
+- **P8** — Dựng lại cửa sổ chính:
+  - Lớp `Theme` với token màu light/dark theo Windows (tự đổi khi người dùng đổi theme); mọi cặp chữ/nền ≥ 4.5:1.
+  - Vùng thả focus được bằng Tab, chọn bằng Enter/Space/Ctrl+O, viền đổi màu khi kéo vào; thả lên label con cũng nhận.
+  - Nhãn cố định trên từng ô nhập; một ô duy nhất "Mật khẩu hoặc mã khôi phục" khi giải mã.
+  - Thanh độ mạnh mật khẩu (F6), tối thiểu 8 ký tự, cảnh báo khi mật khẩu yếu; báo "chưa khớp" ngay khi gõ; gợi ý Caps Lock; Alt+H hiện/ẩn mật khẩu.
+  - Thông báo thống nhất bằng TaskDialog; nút "Mở thư mục" sau khi giải mã.
+  - Font 4 bậc; icon Segoe Fluent (dự phòng MDL2); DPI PerMonitorV2; menu ⚙ có mục trợ giúp "Mã khôi phục là gì?" và "Phím tắt".
+  - Đã render ảnh kiểm tra cả light/dark, mã hóa/giải mã. 59/59 test pass.

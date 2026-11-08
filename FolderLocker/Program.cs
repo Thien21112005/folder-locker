@@ -13,6 +13,7 @@ namespace FolderLocker
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
+            Views.Theming.Theme.Initialize();
             Application.Run(new MainForm());
         }
     }
