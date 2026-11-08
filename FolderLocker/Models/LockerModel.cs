@@ -121,8 +121,9 @@ namespace FolderLocker.Models
                 return (false, "File bị lỗi hoặc không đúng định dạng!", null);
             }
 
-            byte[] providedHash = HashPassword(passwordOrRecoveryCode);
-            byte[]? fileKey = TryUnwrapKey(passEnc, providedHash) ?? TryUnwrapKey(recEnc, providedHash);
+            // Mật khẩu dùng nguyên văn; mã khôi phục được chuẩn hóa (khoảng trắng, chữ thường...)
+            byte[]? fileKey = TryUnwrapKey(passEnc, HashPassword(passwordOrRecoveryCode))
+                           ?? TryUnwrapKey(recEnc, HashPassword(RecoveryCode.Normalize(passwordOrRecoveryCode)));
 
             if (fileKey == null)
             {
@@ -283,17 +284,19 @@ namespace FolderLocker.Models
         }
 
         // Dùng bộ sinh số ngẫu nhiên an toàn cho mật mã (CSPRNG), không dùng System.Random
-        private static string GenerateRecoveryCode()
-        {
-            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            string Segment() => RandomNumberGenerator.GetString(chars, 4);
-            return $"FL-{Segment()}-{Segment()}-{Segment()}";
-        }
+        private static string GenerateRecoveryCode() => RecoveryCode.Generate();
 
-        public void Delete(string path)
+        /// <summary>Chuyển file/folder vào Thùng rác (có thể khôi phục), không xóa vĩnh viễn.</summary>
+        public void MoveToRecycleBin(string path)
         {
-            if (Directory.Exists(path)) Directory.Delete(path, true);
-            else if (File.Exists(path)) File.Delete(path);
+            if (Directory.Exists(path))
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            else if (File.Exists(path))
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
         }
 
         public static byte[] HashPassword(string password) => SHA256.HashData(Encoding.UTF8.GetBytes(password));

@@ -168,7 +168,7 @@ namespace FolderLocker.Views
 
             // chkDeleteOriginal
             this.chkDeleteOriginal.AutoSize = true;
-            this.chkDeleteOriginal.Checked = true;
+            this.chkDeleteOriginal.Checked = false;
             this.chkDeleteOriginal.CheckedState.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(94)))), ((int)(((byte)(148)))), ((int)(((byte)(255)))));
             this.chkDeleteOriginal.CheckedState.BorderRadius = 2;
             this.chkDeleteOriginal.CheckedState.BorderThickness = 0;
@@ -179,7 +179,7 @@ namespace FolderLocker.Views
             this.chkDeleteOriginal.Name = "chkDeleteOriginal";
             this.chkDeleteOriginal.Size = new System.Drawing.Size(225, 19);
             this.chkDeleteOriginal.TabIndex = 5;
-            this.chkDeleteOriginal.Text = "Tự động xóa file/folder gốc sau khi mã hóa";
+            this.chkDeleteOriginal.Text = "Xóa bản gốc sau khi mã hóa (chuyển vào Thùng rác)";
             this.chkDeleteOriginal.UncheckedState.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(125)))), ((int)(((byte)(137)))), ((int)(((byte)(149)))));
             this.chkDeleteOriginal.UncheckedState.BorderRadius = 2;
             this.chkDeleteOriginal.UncheckedState.BorderThickness = 1;
