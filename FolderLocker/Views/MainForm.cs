@@ -505,7 +505,7 @@ namespace FolderLocker.Views
                 return;
             }
 
-            ShowSuccessWithCopy(result.Message, result.RecoveryCode ?? "");
+            RecoveryCodeDialog.ShowFor(this, [new RecoveryEntry(dest, result.RecoveryCode ?? "")]);
 
             // Chỉ xóa bản gốc sau khi người dùng đã thấy mã khôi phục
             if (deleteSrc)
@@ -564,63 +564,6 @@ namespace FolderLocker.Views
             {
                 SetBusy(false);
             }
-        }
-
-        private void ShowSuccessWithCopy(string message, string recoveryCode)
-        {
-            using var f = new Form();
-            f.Size = new Size(400, 230);
-            f.StartPosition = FormStartPosition.CenterParent;
-            f.FormBorderStyle = FormBorderStyle.None;
-            f.BackColor = Color.White;
-            f.ShowInTaskbar = false;
-
-            using var components = new System.ComponentModel.Container();
-            var borderless = new Guna2BorderlessForm(components);
-            borderless.ContainerControl = f;
-            borderless.BorderRadius = 15;
-
-            var lblTitle = new Label() { Text = message, Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI Semibold", 16, FontStyle.Bold), ForeColor = Color.FromArgb(46, 204, 113) };
-            var lblSub = new Label() { Text = "Yêu cầu lưu trữ bảo mật Mã khôi phục hệ thống dưới đây:", Location = new Point(20, 60), AutoSize = true, Font = new Font("Segoe UI", 10), ForeColor = Color.Gray };
-
-            var txt = new Guna2TextBox()
-            {
-                Text = recoveryCode,
-                Location = new Point(20, 95),
-                Size = new Size(360, 45),
-                ReadOnly = true,
-                Font = new Font("Segoe UI", 13, FontStyle.Bold),
-                BorderRadius = 8,
-                TextAlign = HorizontalAlignment.Center,
-                ForeColor = Color.FromArgb(50, 50, 50)
-            };
-
-            var btnCopy = new Guna2Button() { Text = "Copy Mã", Location = new Point(20, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(74, 110, 255), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
-            var btnOk = new Guna2Button() { Text = "XONG", Location = new Point(230, 160), Size = new Size(150, 45), BorderRadius = 8, FillColor = Color.FromArgb(230, 230, 230), ForeColor = Color.FromArgb(100, 100, 100), Font = new Font("Segoe UI Semibold", 10, FontStyle.Bold) };
-
-            btnCopy.Click += (s, e) =>
-            {
-                try
-                {
-                    Clipboard.SetText(recoveryCode);
-                    btnCopy.Text = "Đã Copy!";
-                    btnCopy.FillColor = Color.FromArgb(46, 204, 113);
-                }
-                catch (System.Runtime.InteropServices.ExternalException)
-                {
-                    btnCopy.Text = "Thử lại";
-                }
-            };
-
-            btnOk.Click += (s, e) => f.Close();
-
-            f.Controls.Add(lblTitle);
-            f.Controls.Add(lblSub);
-            f.Controls.Add(txt);
-            f.Controls.Add(btnCopy);
-            f.Controls.Add(btnOk);
-            f.AcceptButton = btnOk;
-            f.ShowDialog(this);
         }
     }
 }

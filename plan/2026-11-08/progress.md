@@ -24,8 +24,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 | Giai đoạn | Nội dung | Trạng thái | Commit |
 |-----------|----------|-----------|--------|
 | P8 | U3, U4, U6, U7, U8, U9 + dark mode + F6: dựng lại cửa sổ chính (token màu, bàn phím, nhãn, báo lỗi tại chỗ, độ mạnh mật khẩu) | ✅ | `feat(ui)` |
-| P9 | U2 + F3: dialog mã khôi phục an toàn, lưu ra .txt | 🔄 | |
-| P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | ⬜ | |
+| P9 | U2 + F3: dialog mã khôi phục an toàn, lưu ra .txt | ✅ | `feat(ui)` |
+| P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | 🔄 | |
 | P11 | F4 + F8: kiểm tra file .enc trước khi xóa bản gốc, xóa an toàn, lưu cài đặt | ⬜ | |
 | P12 | F5: xử lý hàng loạt | ⬜ | |
 | P13 | F1: đổi mật khẩu | ⬜ | |
@@ -53,3 +53,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Thông báo thống nhất bằng TaskDialog; nút "Mở thư mục" sau khi giải mã.
   - Font 4 bậc; icon Segoe Fluent (dự phòng MDL2); DPI PerMonitorV2; menu ⚙ có mục trợ giúp "Mã khôi phục là gì?" và "Phím tắt".
   - Đã render ảnh kiểm tra cả light/dark, mã hóa/giải mã. 59/59 test pass.
+- **P9** — Dialog mã khôi phục mới (`RecoveryCodeDialog`):
+  - Nói rõ "chỉ hiển thị MỘT LẦN" và cảnh báo không lưu chung chỗ với file .enc.
+  - Font Consolas để phân biệt 0/O; nút "Lưu ra file .txt…" (F3), cảnh báo nếu lưu cùng thư mục với .enc.
+  - "Xong" chỉ bật sau khi đã sao chép / đã lưu / đã tích xác nhận; Esc/Alt+F4 hỏi lại.
+  - Hỗ trợ sẵn nhiều mã (cho batch). Có viền hệ thống và thanh tiêu đề tối theo theme. Đã render ảnh kiểm tra.
