@@ -29,9 +29,9 @@ namespace FolderLocker.Views
         private bool _holdClose;
 
         /// <summary>
-        /// Cửa sổ không viền (FormBorderStyle.None) mặc định thiếu WS_MINIMIZEBOX nên Windows
-        /// không chạy hiệu ứng thu nhỏ / hiện lại và bấm biểu tượng taskbar không thu nhỏ được.
-        /// WS_EX_COMPOSITED vẽ toàn bộ cửa sổ một lần (double-buffer) để hết giật khi hiện lại.
+        /// WS_MINIMIZEBOX: bấm biểu tượng taskbar để thu nhỏ. WS_SYSMENU: Alt+Space.
+        /// WS_EX_COMPOSITED: vẽ cả cửa sổ một lần (double-buffer) để hết giật khi hiện lại.
+        /// (WS_CAPTION được bật sau khi tạo handle, xem OnHandleCreated.)
         /// </summary>
         protected override CreateParams CreateParams
         {
@@ -45,6 +45,54 @@ namespace FolderLocker.Views
                 cp.ExStyle |= WS_EX_COMPOSITED;
                 return cp;
             }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        /// <summary>
+        /// Windows (DWM) chỉ chạy hiệu ứng thu nhỏ / hiện lại cho cửa sổ có WS_CAPTION.
+        /// Bật nó SAU khi tạo handle (không đặt trong CreateParams) để WinForms vẫn tính kích thước
+        /// như cửa sổ không viền; WM_NCCALCSIZE bên dưới bỏ vùng tiêu đề nên giao diện không đổi.
+        /// </summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            const int GWL_STYLE = -16;
+            const int WS_CAPTION = 0x00C00000;
+            const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20;
+            SetWindowLong(Handle, GWL_STYLE, GetWindowLong(Handle, GWL_STYLE) | WS_CAPTION);
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCCALCSIZE = 0x0083;
+            const int WM_STYLECHANGING = 0x007C;
+            const int GWL_STYLE = -16;
+            const int WS_CAPTION = 0x00C00000;
+
+            // wParam = TRUE: trả 0 ⇒ vùng client chiếm trọn cửa sổ, không vẽ thanh tiêu đề / viền
+            if (m.Msg == WM_NCCALCSIZE && m.WParam != IntPtr.Zero)
+            {
+                m.Result = IntPtr.Zero;
+                return;
+            }
+
+            // WinForms / Guna có thể đặt lại style; luôn giữ WS_CAPTION để còn hiệu ứng thu nhỏ
+            if (m.Msg == WM_STYLECHANGING && (int)m.WParam == GWL_STYLE)
+            {
+                // STYLESTRUCT { int styleOld; int styleNew; }
+                int newStyle = System.Runtime.InteropServices.Marshal.ReadInt32(m.LParam, 4);
+                System.Runtime.InteropServices.Marshal.WriteInt32(m.LParam, 4, newStyle | WS_CAPTION);
+            }
+            base.WndProc(ref m);
         }
 
         public MainForm()
