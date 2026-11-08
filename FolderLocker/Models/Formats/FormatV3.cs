@@ -204,6 +204,70 @@ namespace FolderLocker.Models.Formats
         }
 
         /// <summary>
+        /// Đổi mật khẩu mà không mã hóa lại dữ liệu: mở khóa file bằng mật khẩu/mã hiện tại,
+        /// bọc lại khóa file vào key slot mới (salt mới), rồi chép nguyên phần dữ liệu sang file tạm và thay thế.
+        /// Header bất biến (AAD của các chunk) giữ nguyên nên dữ liệu vẫn hợp lệ.
+        /// </summary>
+        /// <returns>Thành công kèm mã khôi phục mới nếu <paramref name="newRecoveryCode"/> = true.</returns>
+        public static OperationResult ChangeSecret(string encPath, string currentSecret, string newPassword, bool newRecoveryCode, CancellationToken ct = default)
+        {
+            Parsed parsed;
+            byte[]? fileKey;
+            using (var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var (p, error) = Parse(fs);
+                if (p == null) return OperationResult.Fail(error!);
+                parsed = p;
+                fileKey = Unlock(parsed.Slots, parsed.Header, currentSecret);
+            }
+            if (fileKey == null) return OperationResult.Fail("Mật khẩu hoặc mã khôi phục hiện tại không đúng!");
+
+            string? code = null;
+            var slots = new List<KeySlot>();
+            try
+            {
+                slots.Add(CreateSlot(SlotPassword, newPassword, fileKey, parsed.Header));
+                if (newRecoveryCode)
+                {
+                    code = RecoveryCode.Generate();
+                    slots.Add(CreateSlot(SlotRecovery, code, fileKey, parsed.Header));
+                }
+                else
+                {
+                    slots.AddRange(parsed.Slots.Where(s => s.Type == SlotRecovery));
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(fileKey);
+            }
+
+            string temp = PathSafety.TempSibling(encPath);
+            try
+            {
+                using (var src = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var dst = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    dst.Write(parsed.Header);
+                    dst.WriteByte((byte)slots.Count);
+                    foreach (var slot in slots) WriteSlot(dst, slot);
+
+                    src.Position = parsed.DataOffset;
+                    PayloadIO.CopyWithProgress(src, dst, src, null, ct);
+                }
+                File.SetCreationTimeUtc(temp, File.GetCreationTimeUtc(encPath));
+                PathSafety.CommitFile(temp, encPath);
+            }
+            catch
+            {
+                PathSafety.TryDeleteFile(temp);
+                throw;
+            }
+
+            return new OperationResult(true, "Đã đổi mật khẩu.", encPath, code);
+        }
+
+        /// <summary>
         /// Xác thực toàn bộ file (mọi tag GCM) mà không ghi gì ra đĩa.
         /// Dùng để chắc chắn file .enc mở được trước khi xóa bản gốc.
         /// </summary>

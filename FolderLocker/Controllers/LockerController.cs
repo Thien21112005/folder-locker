@@ -78,6 +78,27 @@ namespace FolderLocker.Controllers
         /// <summary>true nếu là file .enc do FolderLocker tạo (đọc header, không chỉ dựa vào đuôi file).</summary>
         public bool IsEncryptedFile(string path) => LockerModel.DetectFormat(path) != EncryptedFormat.None;
 
+        /// <summary>Đổi mật khẩu của file .enc; trả về mã khôi phục mới nếu được yêu cầu.</summary>
+        public OperationResult ChangePassword(string encPath, string currentSecret, string newPassword, bool newRecoveryCode, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(currentSecret)) return OperationResult.Fail("Chưa nhập mật khẩu hoặc mã khôi phục hiện tại!");
+            if (PasswordStrength.Evaluate(newPassword) is StrengthLevel.Empty or StrengthLevel.TooShort)
+                return OperationResult.Fail($"Mật khẩu mới cần tối thiểu {PasswordStrength.MinLength} ký tự.");
+            if (!File.Exists(encPath)) return OperationResult.Fail("File .enc không tồn tại!");
+            try
+            {
+                return _model.ChangePassword(encPath, currentSecret, newPassword, newRecoveryCode, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return OperationResult.Canceled();
+            }
+            catch (Exception ex)
+            {
+                return OperationResult.Fail(Describe(ex));
+            }
+        }
+
         /// <summary>Đọc lại toàn bộ file .enc vừa tạo và xác thực, trước khi dám xóa bản gốc.</summary>
         public OperationResult Verify(string encPath, string password, IProgress<int>? progress = null, CancellationToken ct = default)
         {

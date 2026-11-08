@@ -77,6 +77,15 @@ namespace FolderLocker.Models
             }
         }
 
+        /// <summary>Đổi mật khẩu (và tùy chọn mã khôi phục) của file V3 mà không mã hóa lại dữ liệu.</summary>
+        public OperationResult ChangePassword(string encPath, string currentSecret, string newPassword, bool newRecoveryCode, CancellationToken ct = default) =>
+            DetectFormat(encPath) switch
+            {
+                EncryptedFormat.V3 => FormatV3.ChangeSecret(encPath, currentSecret, newPassword, newRecoveryCode, ct),
+                EncryptedFormat.None => OperationResult.Fail(NotOurs),
+                _ => OperationResult.Fail("File định dạng cũ không đổi mật khẩu được. Hãy giải mã rồi mã hóa lại để chuyển sang định dạng mới."),
+            };
+
         /// <summary>Đọc lại và xác thực toàn bộ file .enc (chỉ hỗ trợ V3, định dạng mà app đang tạo).</summary>
         public OperationResult Verify(string encPath, string password, IProgress<int>? progress, CancellationToken ct = default) =>
             DetectFormat(encPath) == EncryptedFormat.V3

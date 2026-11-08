@@ -28,8 +28,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 | P10 | U5 + F2: nhãn trạng thái, nút Hủy, kiểm tra mật khẩu trước khi chọn thư mục, nút "Mở thư mục" | ✅ | `feat` |
 | P11 | F4 + F8: kiểm tra file .enc trước khi xóa bản gốc, xóa an toàn, lưu cài đặt | ✅ | `feat` |
 | P12 | F5: xử lý hàng loạt | ✅ | `feat` |
-| P13 | F1: đổi mật khẩu | 🔄 | |
-| P14 | F9: giữ thời gian tạo/sửa file | ⬜ | |
+| P13 | F1: đổi mật khẩu | ✅ | `feat` |
+| P14 | F9: giữ thời gian tạo/sửa file | 🔄 | |
 | P15 | F10: nhật ký hoạt động | ⬜ | |
 | P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | ⬜ | |
 | P17 | F11: CLI | ⬜ | |
@@ -65,3 +65,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Mã hóa: chọn một thư mục đích; trùng tên thì đánh số "(2)"; file đã tồn tại thì hỏi một lần. Một dialog hiện tất cả mã khôi phục; giữ cửa sổ mở cho tới khi người dùng đã thấy mã, kể cả khi bấm đóng giữa chừng.
   - Giải mã: kiểm tra mật khẩu với tất cả trước, rồi hỏi "tiếp tục với số còn lại". Hỏi ghi đè có ô "Áp dụng cho các mục còn lại".
   - Tóm tắt kết quả có phần "Xem chi tiết" lỗi và nút "Mở thư mục". Đã render ảnh trạng thái nhiều mục và đang chạy.
+- **P13** — F1 đổi mật khẩu:
+  - Mở khóa bằng mật khẩu hoặc mã khôi phục hiện tại, rồi bọc lại khóa file vào key slot mới (salt mới). Dữ liệu không bị mã hóa lại; ghi qua file tạm rồi thay thế.
+  - Tùy chọn tạo mã khôi phục mới (mã cũ hết hiệu lực).
+  - Dialog nói rõ giới hạn: bản sao cũ vẫn mở được bằng mật khẩu cũ. File V1/V2 được hướng dẫn giải mã rồi mã hóa lại.
+  - Nút "Đổi mật khẩu của file này…" chỉ hiện ở chế độ giải mã một file. 75/75 test pass.

@@ -28,6 +28,7 @@ namespace FolderLocker.Views
         private System.Windows.Forms.Label lblMismatch = null!;
         private Guna.UI2.WinForms.Guna2CheckBox chkDeleteOriginal = null!;
         private Guna.UI2.WinForms.Guna2GradientButton btnAction = null!;
+        private Guna.UI2.WinForms.Guna2Button btnChangePassword = null!;
         private System.Windows.Forms.Label lblStatus = null!;
         private Guna.UI2.WinForms.Guna2ProgressBar progressBar = null!;
         private System.Windows.Forms.ToolTip toolTip = null!;
@@ -69,6 +70,7 @@ namespace FolderLocker.Views
             this.lblMismatch = new System.Windows.Forms.Label();
             this.chkDeleteOriginal = new Guna.UI2.WinForms.Guna2CheckBox();
             this.btnAction = new Guna.UI2.WinForms.Guna2GradientButton();
+            this.btnChangePassword = new Guna.UI2.WinForms.Guna2Button();
             this.lblStatus = new System.Windows.Forms.Label();
             this.progressBar = new Guna.UI2.WinForms.Guna2ProgressBar();
             this.toolTip = new System.Windows.Forms.ToolTip(this.components);
@@ -152,6 +154,7 @@ namespace FolderLocker.Views
             this.flowMain.Controls.Add(this.lblMismatch);
             this.flowMain.Controls.Add(this.chkDeleteOriginal);
             this.flowMain.Controls.Add(this.btnAction);
+            this.flowMain.Controls.Add(this.btnChangePassword);
             this.flowMain.Controls.Add(this.lblStatus);
             this.flowMain.Controls.Add(this.progressBar);
 
@@ -298,6 +301,17 @@ namespace FolderLocker.Views
             this.btnAction.TabIndex = 4;
             this.btnAction.Text = "Mã hóa";
             this.btnAction.Click += new System.EventHandler(this.btnAction_Click);
+
+            // btnChangePassword — chỉ hiện ở chế độ giải mã, một file
+            this.btnChangePassword.BorderRadius = 6;
+            this.btnChangePassword.Margin = new System.Windows.Forms.Padding(0, 0, 0, 4);
+            this.btnChangePassword.Name = "btnChangePassword";
+            this.btnChangePassword.Size = new System.Drawing.Size(402, 32);
+            this.btnChangePassword.TabIndex = 5;
+            this.btnChangePassword.Text = "Đổi mật khẩu của file này…";
+            this.btnChangePassword.AccessibleName = "Đổi mật khẩu của file này";
+            this.btnChangePassword.Visible = false;
+            this.btnChangePassword.Click += new System.EventHandler(this.btnChangePassword_Click);
 
             // lblStatus
             this.lblStatus.AutoSize = false;

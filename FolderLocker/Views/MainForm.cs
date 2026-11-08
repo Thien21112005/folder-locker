@@ -124,6 +124,7 @@ namespace FolderLocker.Views
             chkDeleteOriginal.Font = Theme.Small;
             btnAction.Font = Theme.BodyStrong;
             lblStatus.Font = Theme.Small;
+            btnChangePassword.Font = Theme.Small;
         }
 
         private void ApplyTheme()
@@ -152,6 +153,7 @@ namespace FolderLocker.Views
             if (_isBusy) ThemeStyles.NeutralGradientButton(btnAction, p);
             else ThemeStyles.GradientButton(btnAction, p, _isEncryptMode);
             lblStatus.ForeColor = p.TextSecondary;
+            ThemeStyles.LinkButton(btnChangePassword, p);
             ThemeStyles.ProgressBar(progressBar, p, _isEncryptMode ? p.EncryptFrom : p.Success);
 
             // Icon con mắt vẽ lại theo màu theme
@@ -325,6 +327,7 @@ namespace FolderLocker.Views
             txtConfirmPassword.Visible = encrypt;
             lblMismatch.Visible = encrypt;
             chkDeleteOriginal.Visible = encrypt;
+            btnChangePassword.Visible = !encrypt && _selectedPaths.Count == 1;
 
             SetMasked(txtPassword, true);
             SetMasked(txtConfirmPassword, true);
@@ -417,6 +420,7 @@ namespace FolderLocker.Views
             txtConfirmPassword.Enabled = !busy;
             chkDeleteOriginal.Enabled = !busy;
             btnSettings.Enabled = !busy;
+            btnChangePassword.Enabled = !busy;
             btnAction.Enabled = true;
 
             var p = Theme.Current;
@@ -569,6 +573,48 @@ namespace FolderLocker.Views
                 "Enter\tMã hóa / giải mã\n" +
                 "Alt+H\tHiện / ẩn mật khẩu đang nhập\n" +
                 "Tab\tChuyển giữa các ô");
+
+        // ============================================
+        // ĐỔI MẬT KHẨU (F1)
+        // ============================================
+
+        private async void btnChangePassword_Click(object? sender, EventArgs e)
+        {
+            if (_isBusy || _selectedPaths.Count != 1) return;
+            string enc = _selectedPaths[0];
+
+            try
+            {
+                using var dlg = new ChangePasswordDialog(enc, txtPassword.Text);
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+                string current = dlg.CurrentSecret, next = dlg.NewPassword;
+                bool rotate = dlg.NewRecoveryCode;
+
+                var result = await RunOperation("Đang đổi mật khẩu",
+                    (_, ct) => _controller.ChangePassword(enc, current, next, rotate, ct), showProgress: false);
+                if (_closeAfterCancel) return;
+
+                if (!result.Success)
+                {
+                    Dialogs.Error(this, "Không đổi được mật khẩu", result.Message);
+                    return;
+                }
+
+                if (result.RecoveryCode != null)
+                    RecoveryCodeDialog.ShowFor(this, [new RecoveryEntry(enc, result.RecoveryCode)]);
+
+                Dialogs.Info(this, "Đã đổi mật khẩu",
+                    rotate ? "Từ giờ hãy dùng mật khẩu mới hoặc mã khôi phục mới." : "Từ giờ hãy dùng mật khẩu mới. Mã khôi phục cũ vẫn dùng được.");
+                txtPassword.Clear();
+                txtPassword.Focus();
+            }
+            catch (Exception ex)
+            {
+                SetBusy(false);
+                Dialogs.Error(this, "Đã xảy ra lỗi", ex.Message);
+            }
+        }
 
         // ============================================
         // HÀNH ĐỘNG CHÍNH
