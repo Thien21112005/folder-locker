@@ -28,8 +28,28 @@ namespace FolderLocker.Views
         private bool _closeAfterCancel;
         private bool _holdClose;
 
+        /// <summary>
+        /// Cửa sổ không viền (FormBorderStyle.None) mặc định thiếu WS_MINIMIZEBOX nên Windows
+        /// không chạy hiệu ứng thu nhỏ / hiện lại và bấm biểu tượng taskbar không thu nhỏ được.
+        /// WS_EX_COMPOSITED vẽ toàn bộ cửa sổ một lần (double-buffer) để hết giật khi hiện lại.
+        /// </summary>
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                const int WS_MINIMIZEBOX = 0x00020000;
+                const int WS_SYSMENU = 0x00080000;
+                const int WS_EX_COMPOSITED = 0x02000000;
+                var cp = base.CreateParams;
+                cp.Style |= WS_MINIMIZEBOX | WS_SYSMENU;
+                cp.ExStyle |= WS_EX_COMPOSITED;
+                return cp;
+            }
+        }
+
         public MainForm()
         {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
             InitializeComponent();
             AcceptButton = btnAction;
             ApplyFonts();

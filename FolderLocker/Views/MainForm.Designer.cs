@@ -229,10 +229,10 @@ namespace FolderLocker.Views
             this.strengthBar.Size = new System.Drawing.Size(402, 4);
             this.strengthBar.AccessibleName = "Độ mạnh mật khẩu";
 
-            // tblHints — trái: Caps Lock, phải: độ mạnh
+            // tblHints — trái: Caps Lock (co theo nội dung, rỗng thì 0px), phải: độ mạnh (chiếm phần còn lại)
             this.tblHints.ColumnCount = 2;
-            this.tblHints.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
-            this.tblHints.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+            this.tblHints.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.AutoSize));
+            this.tblHints.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblHints.RowCount = 1;
             this.tblHints.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblHints.Controls.Add(this.lblCapsLock, 0, 0);
@@ -242,13 +242,15 @@ namespace FolderLocker.Views
             this.tblHints.Size = new System.Drawing.Size(402, 20);
             this.tblHints.BackColor = System.Drawing.Color.Transparent;
 
-            this.lblCapsLock.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.lblCapsLock.Margin = new System.Windows.Forms.Padding(0);
+            this.lblCapsLock.AutoSize = true;
+            this.lblCapsLock.Anchor = System.Windows.Forms.AnchorStyles.Left;
+            this.lblCapsLock.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
             this.lblCapsLock.Name = "lblCapsLock";
             this.lblCapsLock.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
             this.lblStrength.Dock = System.Windows.Forms.DockStyle.Fill;
             this.lblStrength.Margin = new System.Windows.Forms.Padding(0);
+            this.lblStrength.AutoEllipsis = true;
             this.lblStrength.Name = "lblStrength";
             this.lblStrength.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
