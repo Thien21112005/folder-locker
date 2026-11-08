@@ -77,6 +77,16 @@ namespace FolderLocker.Models
             }
         }
 
+        /// <summary>Đọc lại và xác thực toàn bộ file .enc (chỉ hỗ trợ V3, định dạng mà app đang tạo).</summary>
+        public OperationResult Verify(string encPath, string password, IProgress<int>? progress, CancellationToken ct = default) =>
+            DetectFormat(encPath) == EncryptedFormat.V3
+                ? FormatV3.Verify(encPath, password, progress, ct)
+                : OperationResult.Fail("Chỉ kiểm tra được file định dạng mới (V3).");
+
+        /// <summary>Ghi đè ngẫu nhiên rồi xóa vĩnh viễn (không qua Thùng rác).</summary>
+        public void ShredPermanently(string path, IProgress<int>? progress, CancellationToken ct = default) =>
+            SecureDelete.Run(path, progress, ct);
+
         /// <summary>Chuyển file/folder vào Thùng rác (có thể khôi phục), không xóa vĩnh viễn.</summary>
         public void MoveToRecycleBin(string path)
         {

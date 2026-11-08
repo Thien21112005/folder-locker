@@ -78,19 +78,40 @@ namespace FolderLocker.Controllers
         /// <summary>true nếu là file .enc do FolderLocker tạo (đọc header, không chỉ dựa vào đuôi file).</summary>
         public bool IsEncryptedFile(string path) => LockerModel.DetectFormat(path) != EncryptedFormat.None;
 
-        /// <summary>Chuyển bản gốc vào Thùng rác. Trả về kết quả để View báo cho người dùng.</summary>
-        public OperationResult DeleteSource(string path)
+        /// <summary>Đọc lại toàn bộ file .enc vừa tạo và xác thực, trước khi dám xóa bản gốc.</summary>
+        public OperationResult Verify(string encPath, string password, IProgress<int>? progress = null, CancellationToken ct = default)
         {
             try
             {
-                _model.MoveToRecycleBin(path);
-                if (File.Exists(path) || Directory.Exists(path))
-                    return OperationResult.Fail("Không xóa được bản gốc (có thể đang được mở bởi chương trình khác).");
-                return new OperationResult(true, "Đã chuyển bản gốc vào Thùng rác.");
+                return _model.Verify(encPath, password, progress, ct);
             }
             catch (OperationCanceledException)
             {
-                return OperationResult.Fail("Đã hủy xóa bản gốc.");
+                return OperationResult.Canceled();
+            }
+            catch (Exception ex)
+            {
+                return OperationResult.Fail(Describe(ex));
+            }
+        }
+
+        /// <summary>
+        /// Xóa bản gốc: mặc định chuyển vào Thùng rác; <paramref name="secure"/> = ghi đè rồi xóa vĩnh viễn.
+        /// </summary>
+        public OperationResult DeleteSource(string path, bool secure = false, IProgress<int>? progress = null, CancellationToken ct = default)
+        {
+            try
+            {
+                if (secure) _model.ShredPermanently(path, progress, ct);
+                else _model.MoveToRecycleBin(path);
+
+                if (File.Exists(path) || Directory.Exists(path))
+                    return OperationResult.Fail("Không xóa được bản gốc (có thể đang được mở bởi chương trình khác).");
+                return new OperationResult(true, secure ? "Đã xóa vĩnh viễn bản gốc." : "Đã chuyển bản gốc vào Thùng rác.");
+            }
+            catch (OperationCanceledException)
+            {
+                return new OperationResult(false, "Đã dừng xóa bản gốc. Một phần dữ liệu gốc có thể đã bị xóa.", Cancelled: true);
             }
             catch (Exception ex)
             {

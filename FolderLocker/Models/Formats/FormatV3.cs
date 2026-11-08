@@ -203,6 +203,32 @@ namespace FolderLocker.Models.Formats
             return new OperationResult(true, "OK");
         }
 
+        /// <summary>
+        /// Xác thực toàn bộ file (mọi tag GCM) mà không ghi gì ra đĩa.
+        /// Dùng để chắc chắn file .enc mở được trước khi xóa bản gốc.
+        /// </summary>
+        public static OperationResult Verify(string encPath, string secret, IProgress<int>? progress, CancellationToken ct = default)
+        {
+            using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var (parsed, error) = Parse(fs);
+            if (parsed == null) return OperationResult.Fail(error!);
+
+            byte[]? fileKey = Unlock(parsed.Slots, parsed.Header, secret);
+            if (fileKey == null) return OperationResult.Fail(WrongSecret);
+
+            try
+            {
+                using var dec = new AesGcmChunkReader(fs, fileKey, parsed.Header, parsed.NoncePrefix, parsed.ChunkSize);
+                if (PayloadIO.ReadName(dec) == null) return OperationResult.Fail("Tên file trong dữ liệu không hợp lệ!");
+                PayloadIO.CopyWithProgress(dec, Stream.Null, fs, progress, ct);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(fileKey);
+            }
+            return new OperationResult(true, "File mã hóa hợp lệ.", encPath);
+        }
+
         public static OperationResult Decrypt(string encPath, string outputFolder, string secret, bool checkOverwrite, IProgress<int>? progress, CancellationToken ct = default)
         {
             using var fs = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);

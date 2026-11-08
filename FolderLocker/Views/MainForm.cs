@@ -39,7 +39,52 @@ namespace FolderLocker.Views
             toolTip.SetToolTip(btnSettings, "Cài đặt và trợ giúp");
             toolTip.SetToolTip(dropZone, "Nhấn Enter hoặc Ctrl+O để chọn");
 
+            BuildSettingsMenu();
             ResetForm();
+        }
+
+        // ============================================
+        // MENU CÀI ĐẶT (phần do code tạo)
+        // ============================================
+
+        private ToolStripMenuItem _mnuSecureDelete = null!;
+
+        private void BuildSettingsMenu()
+        {
+            _mnuSecureDelete = new ToolStripMenuItem("Xóa vĩnh viễn bản gốc (ghi đè, không qua Thùng rác)")
+            {
+                Checked = _settings.SecureDelete,
+            };
+            _mnuSecureDelete.Click += (_, _) => ToggleSecureDelete();
+
+            menuSettings.Items.Insert(0, _mnuSecureDelete);
+            menuSettings.Items.Insert(1, new ToolStripSeparator());
+            UpdateDeleteOptionText();
+        }
+
+        private void ToggleSecureDelete()
+        {
+            bool enable = !_settings.SecureDelete;
+            if (enable && !Dialogs.Confirm(this, "Bật xóa vĩnh viễn bản gốc?",
+                    "Bản gốc sẽ được ghi đè bằng dữ liệu ngẫu nhiên rồi xóa, KHÔNG vào Thùng rác và không khôi phục được.\n\n" +
+                    "Lưu ý: trên SSD, USB hoặc ổ có sao lưu/snapshot, dữ liệu cũ vẫn có thể còn sót ở nơi khác. " +
+                    "Đây là biện pháp giảm rủi ro, không phải bảo đảm tuyệt đối.",
+                    "Bật", "Không", dangerous: true))
+                return;
+
+            _settings.SecureDelete = enable;
+            _settings.Save();
+            _mnuSecureDelete.Checked = enable;
+            UpdateDeleteOptionText();
+        }
+
+        private void UpdateDeleteOptionText()
+        {
+            chkDeleteOriginal.Text = _settings.SecureDelete
+                ? "Xóa vĩnh viễn bản gốc sau khi mã hóa (không khôi phục được)"
+                : "Xóa bản gốc sau khi mã hóa (chuyển vào Thùng rác)";
+            chkDeleteOriginal.AccessibleName = chkDeleteOriginal.Text;
+            toolTip.SetToolTip(chkDeleteOriginal, "Bản gốc chỉ bị xóa sau khi file .enc đã được đọc lại và kiểm tra thành công.");
         }
 
         protected override void OnLoad(EventArgs e)
@@ -575,15 +620,35 @@ namespace FolderLocker.Views
 
             RecoveryCodeDialog.ShowFor(this, [new RecoveryEntry(dest, result.RecoveryCode ?? "")]);
 
-            // Chỉ xóa bản gốc sau khi người dùng đã thấy mã khôi phục
+            // Chỉ xóa bản gốc sau khi người dùng đã thấy mã khôi phục và file .enc đã được kiểm tra lại
             if (deleteSrc)
             {
-                var del = _controller.DeleteSource(source);
-                if (!del.Success)
-                    Dialogs.Warn(this, del.Message, "File mã hóa vẫn đã được tạo: " + dest);
+                string? problem = await DeleteOriginalAfterVerify(source, dest, pass);
+                if (_closeAfterCancel) return;
+                if (problem != null)
+                    Dialogs.Warn(this, "Bản gốc chưa bị xóa", problem + "\n\nFile mã hóa: " + dest);
             }
 
             ResetForm();
+        }
+
+        /// <summary>
+        /// Đọc lại toàn bộ file .enc (xác thực mọi chunk) rồi mới xóa bản gốc.
+        /// Trả về null nếu đã xóa; ngược lại là lý do giữ nguyên bản gốc.
+        /// </summary>
+        private async Task<string?> DeleteOriginalAfterVerify(string source, string dest, string pass)
+        {
+            var verify = await RunOperation("Đang kiểm tra lại file mã hóa", (pr, ct) => _controller.Verify(dest, pass, pr, ct));
+            if (_closeAfterCancel) return null;
+            if (!verify.Success)
+                return verify.Cancelled
+                    ? "Bạn đã dừng bước kiểm tra nên bản gốc được giữ nguyên."
+                    : "File mã hóa không vượt qua bước kiểm tra nên bản gốc được giữ nguyên. " + verify.Message;
+
+            var del = _settings.SecureDelete
+                ? await RunOperation("Đang xóa an toàn bản gốc", (pr, ct) => _controller.DeleteSource(source, secure: true, pr, ct))
+                : _controller.DeleteSource(source);
+            return del.Success ? null : del.Message;
         }
 
         private async Task DecryptData()
