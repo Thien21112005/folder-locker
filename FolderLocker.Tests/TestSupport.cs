@@ -7,7 +7,12 @@ internal static class TestSetup
 {
     /// <summary>Giảm số vòng PBKDF2 cho test chạy nhanh; số vòng được lưu trong file nên vẫn giải mã đúng.</summary>
     [ModuleInitializer]
-    internal static void Init() => FormatV3.Iterations = 1_000;
+    internal static void Init()
+    {
+        FormatV3.Iterations = 1_000;
+        // Không để test ghi cài đặt / nhật ký vào %LOCALAPPDATA% thật
+        FolderLocker.Services.AppSettings.DataFolder = Path.Combine(Path.GetTempPath(), "fl-tests-data-" + Environment.ProcessId);
+    }
 }
 
 /// <summary>Thư mục tạm tự xóa sau mỗi test.</summary>

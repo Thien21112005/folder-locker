@@ -60,9 +60,27 @@ namespace FolderLocker.Views
             };
             _mnuSecureDelete.Click += (_, _) => ToggleSecureDelete();
 
+            var mnuOpenLog = new ToolStripMenuItem("Mở thư mục nhật ký");
+            mnuOpenLog.Click += (_, _) => OpenLogFolder();
+
             menuSettings.Items.Insert(0, _mnuSecureDelete);
             menuSettings.Items.Insert(1, new ToolStripSeparator());
+            menuSettings.Items.Add(new ToolStripSeparator());
+            menuSettings.Items.Add(mnuOpenLog);
             UpdateDeleteOptionText();
+        }
+
+        private void OpenLogFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(AppLog.Folder);
+                System.Diagnostics.Process.Start("explorer.exe", $"\"{AppLog.Folder}\"");
+            }
+            catch (Exception ex)
+            {
+                Dialogs.Error(this, "Không mở được thư mục nhật ký", ex.Message);
+            }
         }
 
         private void ToggleSecureDelete()

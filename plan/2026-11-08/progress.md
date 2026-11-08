@@ -30,8 +30,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 | P12 | F5: xử lý hàng loạt | ✅ | `feat` |
 | P13 | F1: đổi mật khẩu | ✅ | `feat` |
 | P14 | F9: giữ thời gian tạo/sửa file | ✅ | `feat(crypto)` |
-| P15 | F10: nhật ký hoạt động | 🔄 | |
-| P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | ⬜ | |
+| P15 | F10: nhật ký hoạt động | ✅ | `feat` |
+| P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | 🔄 | |
 | P17 | F11: CLI | ⬜ | |
 | P18 | F12: GitHub Actions | ⬜ | |
 | P19 | Polish UI, chụp kiểm tra, cập nhật tài liệu | ⬜ | |
@@ -71,3 +71,4 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Dialog nói rõ giới hạn: bản sao cũ vẫn mở được bằng mật khẩu cũ. File V1/V2 được hướng dẫn giải mã rồi mã hóa lại.
   - Nút "Đổi mật khẩu của file này…" chỉ hiện ở chế độ giải mã một file. 75/75 test pass.
 - **P14** — F9: bit cờ `0x02` trong header V3 báo payload có thời gian sửa/tạo (UTC) ngay sau tên gốc. Giải mã khôi phục thời gian cho file và thư mục gốc; file bên trong zip giữ thời gian sửa (độ chính xác 2 giây của zip). File V3 không có cờ này vẫn đọc bình thường. Verify và đổi mật khẩu đều xử lý được trường mới. 77/77 test pass.
+- **P15** — F10 nhật ký tại `%LOCALAPPDATA%\FolderLocker\logs\yyyy-MM-dd.log`, giữ 30 ngày. Chỉ ghi loại thao tác, kết quả và loại lỗi; **không** ghi mật khẩu, mã, tên file hay đường dẫn (có test kiểm chứng). Controller gom xử lý lỗi về một helper `Run`. Lỗi không lường trước trên UI được ghi log và báo nhẹ nhàng thay vì làm sập app. Menu ⚙ có mục "Mở thư mục nhật ký". Test không còn ghi vào thư mục dữ liệu thật. 78/78 test pass.

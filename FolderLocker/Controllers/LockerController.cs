@@ -3,9 +3,14 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using FolderLocker.Models;
+using FolderLocker.Services;
 
 namespace FolderLocker.Controllers
 {
+    /// <summary>
+    /// Kiểm tra đầu vào, gọi Model, chuyển exception thành thông báo thân thiện và ghi nhật ký.
+    /// Không bao giờ ném exception lên View.
+    /// </summary>
     public class LockerController
     {
         private readonly LockerModel _model = new LockerModel();
@@ -24,19 +29,11 @@ namespace FolderLocker.Controllers
             if (!isFolder && string.Equals(Path.GetFullPath(destPath), Path.GetFullPath(sourcePath), StringComparison.OrdinalIgnoreCase))
                 return OperationResult.Fail("File mã hóa không được trùng với file gốc.");
 
-            try
+            return Run(isFolder ? "encrypt-folder" : "encrypt-file", () =>
             {
                 string recCode = _model.Encrypt(sourcePath, destPath, password, progress, ct);
                 return new OperationResult(true, "Mã hóa thành công!", destPath, recCode);
-            }
-            catch (OperationCanceledException)
-            {
-                return OperationResult.Canceled();
-            }
-            catch (Exception ex)
-            {
-                return OperationResult.Fail(Describe(ex));
-            }
+            });
         }
 
         public OperationResult Decrypt(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite = true, IProgress<int>? progress = null, CancellationToken ct = default)
@@ -46,18 +43,8 @@ namespace FolderLocker.Controllers
             if (!File.Exists(encPath)) return OperationResult.Fail("File .enc không tồn tại!");
             if (!Directory.Exists(outputFolder)) return OperationResult.Fail("Thư mục xuất không tồn tại!");
 
-            try
-            {
-                return _model.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return OperationResult.Canceled();
-            }
-            catch (Exception ex)
-            {
-                return OperationResult.Fail(Describe(ex));
-            }
+            return Run("decrypt-" + LockerModel.DetectFormat(encPath).ToString().ToLowerInvariant(),
+                () => _model.Decrypt(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite, progress, ct));
         }
 
         /// <summary>Kiểm tra mật khẩu / mã khôi phục trước khi hỏi nơi xuất (không ghi gì ra đĩa).</summary>
@@ -65,14 +52,7 @@ namespace FolderLocker.Controllers
         {
             if (string.IsNullOrWhiteSpace(passwordOrRecoveryCode)) return OperationResult.Fail("Chưa nhập mật khẩu hoặc mã khôi phục!");
             if (!File.Exists(encPath)) return OperationResult.Fail("File .enc không tồn tại!");
-            try
-            {
-                return _model.CheckSecret(encPath, passwordOrRecoveryCode);
-            }
-            catch (Exception ex)
-            {
-                return OperationResult.Fail(Describe(ex));
-            }
+            return Run("check-secret", () => _model.CheckSecret(encPath, passwordOrRecoveryCode));
         }
 
         /// <summary>true nếu là file .enc do FolderLocker tạo (đọc header, không chỉ dựa vào đuôi file).</summary>
@@ -85,43 +65,18 @@ namespace FolderLocker.Controllers
             if (PasswordStrength.Evaluate(newPassword) is StrengthLevel.Empty or StrengthLevel.TooShort)
                 return OperationResult.Fail($"Mật khẩu mới cần tối thiểu {PasswordStrength.MinLength} ký tự.");
             if (!File.Exists(encPath)) return OperationResult.Fail("File .enc không tồn tại!");
-            try
-            {
-                return _model.ChangePassword(encPath, currentSecret, newPassword, newRecoveryCode, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return OperationResult.Canceled();
-            }
-            catch (Exception ex)
-            {
-                return OperationResult.Fail(Describe(ex));
-            }
+            return Run("change-password", () => _model.ChangePassword(encPath, currentSecret, newPassword, newRecoveryCode, ct));
         }
 
         /// <summary>Đọc lại toàn bộ file .enc vừa tạo và xác thực, trước khi dám xóa bản gốc.</summary>
-        public OperationResult Verify(string encPath, string password, IProgress<int>? progress = null, CancellationToken ct = default)
-        {
-            try
-            {
-                return _model.Verify(encPath, password, progress, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return OperationResult.Canceled();
-            }
-            catch (Exception ex)
-            {
-                return OperationResult.Fail(Describe(ex));
-            }
-        }
+        public OperationResult Verify(string encPath, string password, IProgress<int>? progress = null, CancellationToken ct = default) =>
+            Run("verify", () => _model.Verify(encPath, password, progress, ct));
 
         /// <summary>
         /// Xóa bản gốc: mặc định chuyển vào Thùng rác; <paramref name="secure"/> = ghi đè rồi xóa vĩnh viễn.
         /// </summary>
-        public OperationResult DeleteSource(string path, bool secure = false, IProgress<int>? progress = null, CancellationToken ct = default)
-        {
-            try
+        public OperationResult DeleteSource(string path, bool secure = false, IProgress<int>? progress = null, CancellationToken ct = default) =>
+            Run(secure ? "delete-secure" : "delete-recycle", () =>
             {
                 if (secure) _model.ShredPermanently(path, progress, ct);
                 else _model.MoveToRecycleBin(path);
@@ -129,15 +84,30 @@ namespace FolderLocker.Controllers
                 if (File.Exists(path) || Directory.Exists(path))
                     return OperationResult.Fail("Không xóa được bản gốc (có thể đang được mở bởi chương trình khác).");
                 return new OperationResult(true, secure ? "Đã xóa vĩnh viễn bản gốc." : "Đã chuyển bản gốc vào Thùng rác.");
+            },
+            cancelled: new OperationResult(false, "Đã dừng xóa bản gốc. Một phần dữ liệu gốc có thể đã bị xóa.", Cancelled: true),
+            failPrefix: "Xóa bản gốc thất bại: ");
+
+        /// <summary>Chạy thao tác, đổi exception thành OperationResult và ghi nhật ký kết quả.</summary>
+        private static OperationResult Run(string operation, Func<OperationResult> body,
+            OperationResult? cancelled = null, string failPrefix = "")
+        {
+            OperationResult result;
+            try
+            {
+                result = body();
             }
             catch (OperationCanceledException)
             {
-                return new OperationResult(false, "Đã dừng xóa bản gốc. Một phần dữ liệu gốc có thể đã bị xóa.", Cancelled: true);
+                result = cancelled ?? OperationResult.Canceled();
             }
             catch (Exception ex)
             {
-                return OperationResult.Fail("Xóa bản gốc thất bại: " + Describe(ex));
+                AppLog.Error(operation, ex);
+                result = OperationResult.Fail(failPrefix + Describe(ex));
             }
+            AppLog.Result(operation, result);
+            return result;
         }
 
         /// <summary>Thông báo lỗi thân thiện thay cho exception thô.</summary>
