@@ -1,40 +1,49 @@
 # Hướng dẫn sử dụng FolderLocker
 
 ## 1. Giới thiệu chung
-FolderLocker là phần mềm tiện ích bảo mật cấp doanh nghiệp, được thiết kế để bảo vệ các thư mục và dữ liệu nhạy cảm trên hệ thống. Ứng dụng cung cấp khả năng khóa và quản lý truy cập thư mục thông qua cơ chế xác thực mật khẩu an toàn, đảm bảo tính riêng tư cho dữ liệu của người dùng.
+FolderLocker mã hóa một file hoặc cả một thư mục thành **một file `.enc` duy nhất**. Muốn mở lại dữ liệu thì phải có mật khẩu hoặc mã khôi phục. Ứng dụng chạy hoàn toàn trên máy bạn, không gửi dữ liệu đi đâu.
+
+> FolderLocker **không khóa thư mục tại chỗ**. Nó tạo ra một file `.enc` mới; bản gốc vẫn còn nguyên, trừ khi bạn chọn xóa bản gốc.
 
 ## 2. Bắt đầu sử dụng
 ### 2.1. Yêu cầu hệ thống
-- Hệ điều hành: Windows 10 hoặc Windows 11.
-- Môi trường thực thi: .NET Runtime (Hệ thống sẽ tự động thông báo cài đặt nếu chưa có sẵn).
+- Windows 10 hoặc Windows 11.
+- .NET 10 Desktop Runtime (Windows sẽ tự báo nếu máy chưa có).
 
-### 2.2. Khởi chạy ứng dụng
-1. Tải bản phân phối (release) mới nhất của ứng dụng.
-2. Giải nén gói phần mềm vào một thư mục trên máy tính.
-3. Khởi chạy tệp `FolderLocker.exe`. Ứng dụng được thiết kế dưới dạng Portable, không yêu cầu các bước cài đặt phức tạp vào hệ thống.
+### 2.2. Khởi chạy
+1. Tải bản phát hành mới nhất và giải nén vào một thư mục bất kỳ.
+2. Chạy `FolderLocker.exe`. Ứng dụng là dạng portable, không cần cài đặt.
 
-## 3. Chức năng cốt lõi
+## 3. Chức năng chính
 
-### 3.1. Thao tác Khóa Thư Mục
-1. Mở ứng dụng FolderLocker.
-2. Nhấn vào tùy chọn chọn thư mục trên giao diện chính để mở hộp thoại duyệt tệp.
-3. Điều hướng tới và chọn thư mục cần được bảo mật.
-4. Nhập mật khẩu bảo vệ vào trường dữ liệu tương ứng. Người dùng có thể sử dụng tính năng hiển thị mật khẩu để đảm bảo tính chính xác.
-5. Xác nhận lại mật khẩu (nếu hệ thống yêu cầu) và nhấn nút "Khóa".
-6. Khi tiến trình hoàn tất, một thông báo thành công sẽ xuất hiện. Nếu hệ thống cung cấp Mã khôi phục (Recovery Code), vui lòng sao chép và lưu trữ mã này tại một vị trí an toàn.
+### 3.1. Mã hóa file / thư mục
+1. Kéo thả file hoặc thư mục vào khung giữa cửa sổ, hoặc bấm vào khung rồi chọn **Chọn File** / **Chọn Thư mục**.
+2. Nhập **Mật khẩu** và **Xác nhận mật khẩu** (bấm biểu tượng con mắt để hiện hoặc ẩn).
+3. *(Tùy chọn)* Tích **"Xóa bản gốc sau khi mã hóa (chuyển vào Thùng rác)"**. Tùy chọn này mặc định tắt.
+4. Bấm **MÃ HÓA DỮ LIỆU**, rồi chọn nơi lưu file `.enc`. Không được lưu bên trong chính thư mục đang mã hóa.
+5. Khi xong, cửa sổ **Mã khôi phục** hiện ra (dạng `FL-XXXX-XXXX-XXXX`):
+   - Bấm **Copy Mã** rồi cất mã ở nơi an toàn, **tách biệt** với file `.enc`.
+   - Mã này **chỉ hiển thị một lần**. Đây là cách duy nhất để mở file nếu bạn quên mật khẩu.
+6. Nếu đã chọn xóa bản gốc, bản gốc được chuyển vào Thùng rác **sau khi** bạn đóng cửa sổ mã khôi phục.
 
-### 3.2. Thao tác Mở Khóa Thư Mục
-1. Mở ứng dụng FolderLocker.
-2. Lựa chọn thư mục đang trong trạng thái khóa.
-3. Nhập chính xác mật khẩu đã thiết lập trong quá trình khóa thư mục.
-4. Nhấn nút "Mở khóa".
-5. Sau khi quá trình xác thực hoàn tất và hợp lệ, thư mục sẽ được khôi phục về trạng thái truy cập bình thường.
+### 3.2. Giải mã file `.enc`
+1. Kéo thả hoặc chọn file `.enc`. Ứng dụng tự chuyển sang chế độ **GIẢI MÃ DỮ LIỆU** (nút màu xanh lá).
+2. Nhập mật khẩu. Nếu quên mật khẩu, bấm **"Quên mật khẩu? Dùng mã khôi phục"** rồi nhập mã khôi phục. Mã gõ chữ thường hoặc có khoảng trắng vẫn được chấp nhận.
+3. Bấm **GIẢI MÃ DỮ LIỆU** và chọn thư mục để xuất kết quả.
+4. Nếu ở đó đã có file/thư mục trùng tên, ứng dụng sẽ hỏi trước khi ghi đè. Khi ghi đè thư mục, thư mục cũ được **thay thế hoàn toàn** chứ không gộp.
 
-## 4. Khuyến nghị Bảo mật
-- **Chính sách Mật khẩu**: Khuyến nghị sử dụng mật khẩu mạnh, kết hợp giữa chữ cái (hoa và thường), chữ số và ký tự đặc biệt.
-- **Quản lý Mã khôi phục**: Trong trường hợp tính năng mã khôi phục được bật, đây là phương tiện duy nhất để lấy lại quyền truy cập khi quên mật khẩu. Tuyệt đối không lưu trữ mã khôi phục cùng nơi với thư mục bị khóa.
-- **Toàn vẹn Dữ liệu**: Hạn chế việc can thiệp thủ công, di chuyển hoặc đổi tên các tệp tin hệ thống do FolderLocker tạo ra bên trong thư mục đã khóa để tránh nguy cơ hỏng hóc dữ liệu.
+## 4. Khuyến nghị bảo mật
+- **Mật khẩu mạnh:** tối thiểu 12 ký tự, kết hợp chữ hoa, chữ thường, số và ký tự đặc biệt. Có thể dùng một cụm từ dài dễ nhớ.
+- **Mã khôi phục:** lưu ở trình quản lý mật khẩu hoặc giấy cất kỹ. Không lưu cùng chỗ với file `.enc`.
+- **Sao lưu:** file `.enc` bị hỏng (ổ đĩa lỗi, copy dở dang...) thì không mở được nữa. Hãy giữ bản sao lưu cho dữ liệu quan trọng.
+- **Thùng rác:** bản gốc bị xóa vẫn nằm trong Thùng rác. Hãy dọn Thùng rác nếu bạn muốn bản gốc không còn khôi phục được dễ dàng.
 
-## 5. Xử lý sự cố (Troubleshooting)
-- **Truy cập bị từ chối khi mở khóa**: Vui lòng kiểm tra lại trạng thái của phím Caps Lock hoặc bộ gõ tiếng Việt, đảm bảo mật khẩu được nhập chính xác hoàn toàn.
-- **Ứng dụng không phản hồi**: Đảm bảo bạn có đủ quyền quản trị viên (Administrator) đối với thư mục đang thao tác. Khởi động lại ứng dụng dưới quyền Administrator nếu cần thiết.
+## 5. Xử lý sự cố
+| Thông báo | Nguyên nhân / cách xử lý |
+|-----------|---------------------------|
+| "Sai mật khẩu hoặc mã khôi phục!" | Kiểm tra Caps Lock và bộ gõ tiếng Việt (Unikey/EVKey có thể tự đổi ký tự). Thử lại bằng mã khôi phục. |
+| "Dữ liệu mã hóa bị hỏng hoặc đã bị chỉnh sửa." | File `.enc` bị lỗi khi sao chép hoặc bị sửa. Hãy dùng bản sao lưu khác. |
+| "Đây không phải file do FolderLocker mã hóa." | File không đúng định dạng. Có thể chỉ là một file có đuôi `.enc` của phần mềm khác. |
+| "File được tạo bởi phiên bản FolderLocker mới hơn." | Cập nhật ứng dụng lên bản mới nhất. |
+| "Không thể lưu file mã hóa bên trong chính thư mục đang mã hóa." | Chọn nơi lưu nằm ngoài thư mục nguồn. |
+| "Không có quyền truy cập file/thư mục." | File đang được chương trình khác mở, hoặc bạn không có quyền với thư mục đó. Đóng chương trình kia hoặc chọn thư mục khác. |

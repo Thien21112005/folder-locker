@@ -8,119 +8,146 @@
 # FolderLocker - Developer Guide & Project Documentation (English)
 
 ## 1. Project Overview
-**FolderLocker** is a folder security and management application for Windows, developed in **C#** on the **Windows Forms** (.NET 10.0) framework. The project follows the **Model-View-Controller (MVC)** architectural pattern to ensure Separation of Concerns, maintainability, and scalability.
+**FolderLocker** is a file and folder encryption tool for Windows, written in **C#** with **Windows Forms** (.NET 10.0). It turns a file or folder into a single encrypted `.enc` file and back. The project follows the **Model-View-Controller (MVC)** pattern.
 
-## 2. Security Architecture & Core Algorithms
-FolderLocker employs a multi-layer security mechanism using industry-standard cryptographic technologies:
+## 2. Security Architecture
 
-### 2.1. Standard Algorithms
-- **AES (Advanced Encryption Standard)**: Serves as the core symmetric encryption algorithm for files and directories. Uses a 256-bit key combined with a cryptographically secure random Initialization Vector (IV), ensuring identical files produce completely different ciphertexts.
-- **SHA-256 (Secure Hash Algorithm 256-bit)**: Applied to hash user passwords and recovery codes prior to key derivation. This prevents plaintext storage and defends against brute-force attacks.
+### 2.1. File format V3 (current)
+| Part | Content |
+|------|---------|
+| Immutable header (14 B) | magic `FLCK`, version `3`, flags (folder bit), chunk size, 4-byte nonce prefix |
+| Key slots | one slot for the password, one for the recovery code: PBKDF2 iterations, 16-byte salt, and the 256-bit file key wrapped with **AES-256-GCM** |
+| Data | **AES-256-GCM** chunks of 1 MB, each with its own 16-byte authentication tag |
 
-### 2.2. Data Processing Mechanism
-- **File Chunking**: For high performance and memory efficiency, large file streams are processed in 4MB buffer chunks (`BUFFER_SIZE = 4096 * 1024`). This avoids high RAM consumption and prevents `OutOfMemoryException` when encrypting multi-gigabyte files.
-- **Archive Compression (`ZipArchive`)**: Before streaming encryption, folders and nested subdirectories are packaged and compressed using `ZipArchiveMode.Create`. This reduces output size and accelerates disk I/O operations.
+- **Key derivation:** `PBKDF2-HMAC-SHA256` with **600,000 iterations** and a random salt per slot (OWASP 2023). This makes brute-forcing passwords expensive. A random salt also means the same password never produces the same key twice.
+- **Authenticated encryption:** each chunk's nonce encodes its index, and its AAD binds the immutable header plus a "final chunk" flag. Any modified byte, reordered chunk, or truncated file is detected, and decryption stops without leaving output files behind.
+- **Recovery code:** `FL-XXXX-XXXX-XXXX`, generated with a CSPRNG (≈ 62 bits). The file key is wrapped once with the password and once with the recovery code, so either unlocks the file. Input is normalised: case, spaces and missing dashes are tolerated.
+- **Payload:** the original file/folder name (sanitised on decrypt to block path traversal) followed by the file bytes, or a zip of the folder. Empty sub-folders are kept.
 
-### 2.3. Recovery Mechanism & Compatibility
-- **Dual-Key Architecture (Format V2)**: Version 2 introduces an enhanced File Header format. The master decryption key (`FileKey`) is encrypted independently using two methods: one derived from the user's password and another from a random Recovery Code (`FL-XXXX-XXXX-XXXX`). Both encrypted keys are stored safely in the header metadata, enabling unlocking via either method without sacrificing entropy.
-- **Backward Compatibility**: The decryption engine inspects the file header byte. If legacy format V1 (without recovery codes) is detected, it automatically routes the stream to the V1 decryption routine, ensuring access to historical encrypted data.
+### 2.2. Safe output handling
+- Results are written to a temporary sibling file/folder first. They are moved into place only after decryption fully succeeds and every chunk has been authenticated.
+- Overwriting an existing folder **replaces** it. The old folder is removed only after the new one is in place.
+- "Delete original after encrypting" sends the source to the **Recycle Bin** and is off by default.
+
+### 2.3. Backward compatibility
+Files from older versions (V1, V2) are detected automatically and can still be decrypted. Those formats use unsalted SHA-256 keys and AES-CBC without authentication. New files are always written as V3.
+
+> ⚠️ Files created by this version (V3) cannot be opened by older FolderLocker builds.
 
 ## 3. System Requirements & Development Environment
 - **Operating System**: Windows 10 / Windows 11
-- **IDE**: Visual Studio 2022 or later
-- **Framework**: .NET 10.0 Windows (`net10.0-windows`)
-- **Dependencies**: `Guna.UI2.WinForms` (Modern UI components, installed via NuGet)
+- **IDE**: Visual Studio 2022 (17.14+) or later, or the .NET CLI
+- **SDK**: .NET 10 (`net10.0-windows`)
+- **Dependencies**: `Guna.UI2.WinForms` (NuGet); tests use xUnit
 
 ## 4. Project Structure
 ```text
 FolderLocker/
-├── Controllers/       # Controller classes handling data flow and input validation
-│   └── LockerController.cs
-├── Models/            # Cryptographic algorithms, file/directory I/O, state management
-│   └── LockerModel.cs
-├── Views/             # Windows Forms UI and presentation logic
-│   ├── MainForm.cs
-│   ├── MainForm.Designer.cs
-│   └── MainForm.resx
-├── Properties/        # Assembly information and launch settings
-└── ico/               # Application icons and graphic assets
+├── Controllers/
+│   └── LockerController.cs      # Input validation, friendly error messages
+├── Models/
+│   ├── LockerModel.cs           # Facade: Encrypt / Decrypt / DetectFormat / Recycle Bin
+│   ├── Crypto/
+│   │   ├── KeyDerivation.cs     # PBKDF2 (+ legacy SHA-256 for V1/V2)
+│   │   └── AesGcmChunkStreams.cs# Chunked AES-GCM writer/reader streams
+│   ├── Formats/
+│   │   ├── FormatV3.cs          # Current file format
+│   │   └── LegacyFormats.cs     # Read-only V1/V2 support
+│   ├── PayloadIO.cs             # Names, zip, atomic writes
+│   ├── PathSafety.cs            # File-name sanitising, temp paths, commit
+│   ├── RecoveryCode.cs          # Generate / normalise recovery codes
+│   └── OperationResult.cs       # Result record returned to the View
+├── Views/                       # Windows Forms UI
+└── ico/
+FolderLocker.Tests/              # xUnit tests (round-trip, tampering, legacy)
+plan/                            # Dated plans and progress logs
 ```
 
-## 5. Setup and Deployment Guide
-1. Clone the repository to your local machine:
+## 5. Setup
+1. Clone the repository:
    ```bash
    git clone https://github.com/Thien21112005/folder-locker.git
    ```
-2. Open `FolderLocker.slnx` or `FolderLocker/FolderLocker.csproj` in Visual Studio 2022+.
-3. Restore NuGet packages to download `Guna.UI2.WinForms`.
-4. Build the solution (<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd>).
-5. Set `FolderLocker` as the Startup Project.
-6. Press <kbd>F5</kbd> to run in Debug mode.
+2. Open `FolderLocker.slnx` in Visual Studio, or use the CLI:
+   ```bash
+   dotnet build FolderLocker.slnx
+   dotnet test FolderLocker.slnx
+   dotnet run --project FolderLocker
+   ```
 
 ## 6. Coding Guidelines
-- **MVC Pattern**: Strictly adhere to the MVC pattern. Do not mix business/crypto logic into Views, and keep UI logic out of Controllers and Models.
-- **Naming Conventions**:
-  - `PascalCase` for Class names, Methods, and Properties.
-  - `camelCase` for Local variables and Parameters.
-  - Prefix `_` for Private fields.
-- **UI Design**: Use Guna UI controls for modern enterprise styling. Avoid default WinForms controls when a Guna equivalent exists.
-- **Security**: Any modification to cryptographic flows in `LockerModel.cs` requires strict review. Never hardcode security keys.
-- **Error Handling**: Use structured `try-catch` blocks. Avoid exposing raw exception stack traces in UI; log errors and present user-friendly alerts.
+- **MVC**: no crypto or file logic in Views; no UI code in Models/Controllers.
+- **Naming**: `PascalCase` for types/methods/properties, `camelCase` for locals/parameters, `_` prefix for private fields.
+- **UI**: prefer Guna UI controls for a consistent look.
+- **Security**: any change to `Models/Crypto` or `Models/Formats` must keep all tests green and add tests for the new behaviour. Never hard-code keys. Changing the on-disk format requires a new version number.
+- **Errors**: Controllers return `OperationResult` with user-friendly messages; never show raw stack traces.
+- **Warnings**: the build treats warnings as errors.
 
 ---
 
 <a name="tiếng-việt"></a>
 # Tài liệu Phát triển Dự án FolderLocker (Tiếng Việt)
 
-## 1. Tổng quan Dự án
-FolderLocker là một ứng dụng quản lý và bảo mật thư mục dành cho hệ điều hành Windows, được phát triển bằng ngôn ngữ C# trên nền tảng Windows Forms (.NET 10.0). Dự án áp dụng kiến trúc Model-View-Controller (MVC) nhằm đảm bảo sự phân tách trách nhiệm (Separation of Concerns), tính khả bảo trì và khả năng mở rộng trong tương lai.
+## 1. Tổng quan
+**FolderLocker** là công cụ mã hóa file và thư mục trên Windows, viết bằng **C#** trên **Windows Forms** (.NET 10.0). Ứng dụng biến một file/thư mục thành một file `.enc` đã mã hóa, và giải mã ngược lại. Dự án theo mô hình **MVC**.
 
-## 2. Kiến trúc Bảo mật & Thuật toán Cốt lõi
-Phần mềm sử dụng cơ chế bảo mật đa lớp (Multi-layer Security) với các công nghệ mã hóa tiêu chuẩn công nghiệp nhằm đảm bảo an toàn tuyệt đối cho dữ liệu:
+## 2. Kiến trúc Bảo mật
 
-### 2.1. Thuật toán Tiêu chuẩn
-- **AES (Advanced Encryption Standard)**: Sử dụng làm thuật toán mã hóa đối xứng lõi cho toàn bộ dữ liệu tệp và thư mục. Thuật toán sử dụng khóa 256-bit kết hợp với khối sinh IV (Initialization Vector) ngẫu nhiên, đảm bảo ngay cả hai tệp giống hệt nhau cũng sẽ tạo ra các bản mã (ciphertext) hoàn toàn khác biệt.
-- **SHA-256 (Secure Hash Algorithm 256-bit)**: Được áp dụng để băm (hash) mật khẩu người dùng và mã khôi phục trước khi đưa vào luồng mã hóa khóa. Việc này ngăn chặn tuyệt đối tình trạng lưu trữ mật khẩu thuần túy (plaintext) và chống lại các cuộc tấn công vét cạn (Brute-force attacks).
+### 2.1. Định dạng file V3 (hiện tại)
+| Phần | Nội dung |
+|------|----------|
+| Header bất biến (14 byte) | magic `FLCK`, version `3`, cờ (folder), kích thước chunk, nonce prefix 4 byte |
+| Key slot | một slot cho mật khẩu, một slot cho mã khôi phục: số vòng PBKDF2, salt 16 byte, khóa file 256-bit được bọc bằng **AES-256-GCM** |
+| Dữ liệu | Các chunk **AES-256-GCM** 1 MB, mỗi chunk có tag xác thực 16 byte riêng |
 
-### 2.2. Cơ chế Xử lý Dữ liệu
-- **File Chunking (Phân mảnh tệp)**: Để tối ưu hóa hiệu suất, hệ thống xử lý các luồng tệp tin lớn bằng cách chia nhỏ dữ liệu thành các đoạn (chunks) 4MB trong bộ đệm (`BUFFER_SIZE = 4096 * 1024`). Giải pháp này giúp kiểm soát chặt chẽ mức tiêu thụ RAM, ngăn ngừa triệt để lỗi tràn bộ nhớ (OutOfMemoryException) khi mã hóa các tệp dữ liệu có kích thước hàng Gigabyte.
-- **Tích hợp nén cấu trúc (ZipArchive)**: Trước khi tiến hành mã hóa luồng, đối với các thư mục, toàn bộ hệ thống tệp con bên trong sẽ được đóng gói và nén lại thành một khối thống nhất bằng `ZipArchiveMode.Create`. Thao tác này làm giảm dung lượng file đầu ra và tăng tốc độ xử lý I/O trên ổ cứng.
+- **Dẫn xuất khóa:** `PBKDF2-HMAC-SHA256`, **600.000 vòng**, salt ngẫu nhiên cho từng slot (theo OWASP 2023). Cách này làm việc dò mật khẩu tốn kém hơn nhiều. Nhờ salt ngẫu nhiên, cùng một mật khẩu không bao giờ tạo ra cùng một khóa.
+- **Mã hóa có xác thực:** nonce của mỗi chunk chứa số thứ tự chunk; AAD gắn với header bất biến và cờ "chunk cuối". Chỉ cần sửa một byte, đảo thứ tự chunk hay cắt cụt file là bị phát hiện ngay. Khi đó quá trình giải mã dừng lại và không để lại file kết quả nào.
+- **Mã khôi phục:** dạng `FL-XXXX-XXXX-XXXX`, sinh bằng CSPRNG (≈ 62 bit). Khóa file được bọc hai lần, một lần bằng mật khẩu và một lần bằng mã khôi phục, nên dùng cái nào cũng mở được. Mã nhập vào được chuẩn hóa: chấp nhận chữ thường, khoảng trắng, thiếu dấu gạch.
+- **Payload:** tên gốc của file/thư mục, rồi đến nội dung file hoặc file zip của thư mục. Tên được làm sạch khi giải mã để chặn path traversal. Thư mục con rỗng vẫn được giữ.
 
-### 2.3. Cơ chế Khôi phục & Tương thích
-- **Kiến trúc Khóa Kép (Dual-Key Architecture - Format V2)**: Phiên bản V2 triển khai định dạng File Header mới. Khóa giải mã chính (FileKey) được mã hóa đồng thời bằng hai lớp độc lập: băm từ Mật khẩu người dùng và băm từ Mã khôi phục ngẫu nhiên (Recovery Code: `FL-XXXX-XXXX-XXXX`). Cả hai khóa mã hóa này được lưu trữ an toàn trong phần Header (metadata). Cơ chế này cho phép người dùng mở khóa bằng một trong hai cách mà không làm giảm Entropy của hệ thống.
-- **Tương thích ngược (Backward Compatibility)**: Hàm giải mã được lập trình để tự động đọc File Header (byte đầu tiên). Nếu hệ thống phát hiện cấu trúc tệp được mã hóa từ phiên bản cũ (Legacy V1 - không có mã khôi phục), hệ thống sẽ tự động chuyển hướng luồng dữ liệu sang module giải mã V1 tương ứng, đảm bảo người dùng không mất quyền truy cập vào các dữ liệu lịch sử.
+### 2.2. Ghi kết quả an toàn
+- Kết quả luôn được ghi ra file/thư mục tạm trước. Chỉ khi giải mã thành công và toàn bộ chunk đã được xác thực thì mới chuyển vào vị trí cuối.
+- Ghi đè thư mục đã tồn tại là **thay thế** chứ không gộp. Thư mục cũ chỉ bị xóa khi thư mục mới đã vào chỗ.
+- Tùy chọn "Xóa bản gốc sau khi mã hóa" chuyển bản gốc vào **Thùng rác** và mặc định tắt.
+
+### 2.3. Tương thích ngược
+File tạo bởi phiên bản cũ (V1, V2) được nhận diện tự động và vẫn giải mã được. Hai định dạng này dùng khóa SHA-256 không salt và AES-CBC không có xác thực. File mới luôn được tạo theo V3.
+
+> ⚠️ File tạo bởi phiên bản này (V3) không mở được bằng các bản FolderLocker cũ.
 
 ## 3. Yêu cầu Hệ thống & Môi trường Phát triển
 - **Hệ điều hành**: Windows 10 hoặc Windows 11
-- **IDE**: Visual Studio 2022 hoặc phiên bản mới hơn.
-- **Framework**: .NET 10.0 Windows (`net10.0-windows`).
-- **Thư viện bên thứ ba (Dependencies)**: Guna.UI2.WinForms (Sử dụng cho các thành phần giao diện người dùng hiện đại, yêu cầu khôi phục thông qua NuGet).
+- **IDE**: Visual Studio 2022 (17.14+) trở lên, hoặc .NET CLI
+- **SDK**: .NET 10 (`net10.0-windows`)
+- **Thư viện**: `Guna.UI2.WinForms` (NuGet); phần test dùng xUnit
 
-## 4. Cấu trúc Thư mục Dự án
-Dự án được tổ chức thành các thành phần chính như sau:
-- **Controllers/**: Chứa các lớp điều khiển, đóng vai trò trung gian xử lý luồng dữ liệu giữa Views và Models, đồng thời chịu trách nhiệm xác thực đầu vào và điều hướng lỗi.
-- **Models/**: Bao gồm cấu trúc dữ liệu (`LockerModel.cs`), các thuật toán mã hóa AES/SHA256, thao tác cấp thấp với hệ thống tệp (File/Directory/Zip) và quản lý trạng thái.
-- **Views/**: Chứa các giao diện Windows Forms (ví dụ: `MainForm.cs`) và các logic hiển thị (Presentation Logic) liên quan. Tuyệt đối không chứa logic mã hóa tại đây.
-- **ico/**: Thư mục chứa các tài nguyên đồ họa của ứng dụng.
-- **Properties/**: Chứa các thông tin cấu hình của Assembly và thiết lập tài nguyên khởi động.
+## 4. Cấu trúc Thư mục
+- **Controllers/**: kiểm tra đầu vào, chuyển lỗi thành thông báo thân thiện, trả về `OperationResult`.
+- **Models/**:
+  - `LockerModel.cs`: facade.
+  - `Crypto/`: PBKDF2 và các stream AES-GCM theo chunk.
+  - `Formats/`: V3, và V1/V2 chỉ để đọc.
+  - `PayloadIO.cs`, `PathSafety.cs`, `RecoveryCode.cs`.
+- **Views/**: giao diện Windows Forms. Tuyệt đối không chứa logic mã hóa.
+- **FolderLocker.Tests/**: unit test xUnit (round-trip, file bị sửa/cắt cụt, định dạng cũ, đường dẫn độc hại...).
+- **plan/**: kế hoạch và tiến độ, chia theo ngày.
 
-## 5. Hướng dẫn Thiết lập và Triển khai
-1. Clone kho lưu trữ (repository) về môi trường phát triển cục bộ:
+## 5. Thiết lập
+1. Clone repository:
    ```bash
    git clone https://github.com/Thien21112005/folder-locker.git
    ```
-2. Mở tệp giải pháp (Solution `FolderLocker.slnx`) hoặc tệp dự án `FolderLocker.csproj` bằng Visual Studio.
-3. Khôi phục các gói NuGet (NuGet Package Restore) để tải về thư viện `Guna.UI2.WinForms`.
-4. Xây dựng dự án (Build Solution - phím tắt Ctrl + Shift + B) để biên dịch và phân tích các luồng phụ thuộc.
-5. Thiết lập `FolderLocker` làm Startup Project.
-6. Nhấn F5 để khởi chạy ứng dụng trong chế độ gỡ lỗi (Debug mode).
+2. Mở `FolderLocker.slnx` bằng Visual Studio, hoặc dùng CLI:
+   ```bash
+   dotnet build FolderLocker.slnx
+   dotnet test FolderLocker.slnx
+   dotnet run --project FolderLocker
+   ```
 
-## 6. Tiêu chuẩn Mã hóa (Coding Guidelines)
-- **Kiến trúc phần mềm**: Tuân thủ nghiêm ngặt mô hình MVC. Tránh việc đưa logic nghiệp vụ (Business Logic) vào Views hoặc để rò rỉ logic giao diện vào Controllers.
-- **Quy tắc Đặt tên (Naming Conventions)**:
-  - Sử dụng định dạng `PascalCase` đối với Tên lớp (Classes), Phương thức (Methods) và Thuộc tính (Properties).
-  - Sử dụng định dạng `camelCase` đối với các biến cục bộ (Local variables) và tham số truyền vào (Parameters).
-  - Thêm tiền tố dấu gạch dưới `_` cho các trường nội bộ (Private fields).
-- **Thiết kế Giao diện**: Mọi thành phần UI bổ sung cần ưu tiên sử dụng bộ điều khiển của Guna UI để đồng bộ hóa phong cách thiết kế chuẩn doanh nghiệp. Hạn chế sử dụng các điều khiển WinForms mặc định nếu Guna có giải pháp thay thế.
-- **Bảo mật**: Mọi thay đổi cấu trúc liên quan đến luồng mã hóa tại `LockerModel.cs` bắt buộc phải qua quy trình đánh giá chéo (Peer Review). Tuyệt đối không hard-code các khóa bảo mật (Security Keys).
-- **Xử lý Ngoại lệ (Error Handling)**: Bắt buộc sử dụng các khối `try-catch` có cấu trúc rõ ràng. Không hiển thị trực tiếp Stack Trace của Exception lên giao diện người dùng; thay vào đó, hãy log lỗi vào hệ thống và trả về hộp thoại cảnh báo tiêu chuẩn.
+## 6. Tiêu chuẩn Code
+- **MVC**: không đặt logic mã hóa/file trong Views; không đặt code UI trong Models/Controllers.
+- **Đặt tên**: `PascalCase` cho lớp/phương thức/thuộc tính, `camelCase` cho biến cục bộ/tham số, tiền tố `_` cho field private.
+- **Giao diện**: ưu tiên control của Guna UI để đồng bộ phong cách.
+- **Bảo mật**: mọi thay đổi trong `Models/Crypto` hoặc `Models/Formats` phải giữ toàn bộ test xanh và bổ sung test cho hành vi mới. Không hard-code khóa. Thay đổi định dạng file trên đĩa phải tăng số version.
+- **Xử lý lỗi**: Controller trả về `OperationResult` với thông báo dễ hiểu; không hiển thị stack trace.
+- **Warning**: build coi warning là lỗi.
