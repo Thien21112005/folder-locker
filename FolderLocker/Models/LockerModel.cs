@@ -3,7 +3,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using System.Linq;
 
 namespace FolderLocker.Models
 {
@@ -17,9 +16,7 @@ namespace FolderLocker.Models
         {
             // Sinh Recovery Code
             string recoveryCode = GenerateRecoveryCode();
-            byte[] fileKey = new byte[32];
-            using (var rng = RandomNumberGenerator.Create())
-                rng.GetBytes(fileKey);
+            byte[] fileKey = RandomNumberGenerator.GetBytes(32);
 
             byte[] passHash = HashPassword(password);
             byte[] recHash = HashPassword(recoveryCode);
@@ -28,74 +25,74 @@ namespace FolderLocker.Models
             var passEnc = EncryptKey(fileKey, passHash);
             var recEnc = EncryptKey(fileKey, recHash);
 
-            using var fsDest = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            
-            // Write Header V2
-            fsDest.WriteByte(VERSION_2);
-            fsDest.WriteByte(isFolder ? (byte)1 : (byte)0);
-            
-            fsDest.WriteByte((byte)passEnc.Length);
-            fsDest.Write(passEnc, 0, passEnc.Length);
-            
-            fsDest.WriteByte((byte)recEnc.Length);
-            fsDest.Write(recEnc, 0, recEnc.Length);
-
-            // Setup FileKey encryption for the actual file data
-            using var aes = Aes.Create();
-            aes.Key = fileKey;
-            aes.GenerateIV();
-            
-            fsDest.Write(aes.IV, 0, 16); // FileData IV
-
-            using var cs = new CryptoStream(fsDest, aes.CreateEncryptor(), CryptoStreamMode.Write);
-
-            if (isFolder)
+            // Ghi ra file tạm, thành công mới đổi tên → lỗi giữa chừng không để lại file .enc hỏng
+            string tempDest = PathSafety.TempSibling(destPath);
+            try
             {
-                using (var zip = new ZipArchive(cs, ZipArchiveMode.Create, true))
+                using (var fsDest = new FileStream(tempDest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 {
-                    var files = Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
-                    int totalFiles = files.Length;
-                    int processed = 0;
-                    
-                    foreach(var file in files)
+                    // Write Header V2
+                    fsDest.WriteByte(VERSION_2);
+                    fsDest.WriteByte(isFolder ? (byte)1 : (byte)0);
+
+                    fsDest.WriteByte((byte)passEnc.Length);
+                    fsDest.Write(passEnc, 0, passEnc.Length);
+
+                    fsDest.WriteByte((byte)recEnc.Length);
+                    fsDest.Write(recEnc, 0, recEnc.Length);
+
+                    using var aes = Aes.Create();
+                    aes.Key = fileKey;
+                    aes.GenerateIV();
+                    fsDest.Write(aes.IV, 0, 16); // FileData IV
+
+                    using var cs = new CryptoStream(fsDest, aes.CreateEncryptor(), CryptoStreamMode.Write);
+
+                    if (isFolder)
                     {
-                        var entryName = Path.GetRelativePath(sourcePath, file);
-                        zip.CreateEntryFromFile(file, entryName);
-                        processed++;
-                        progress?.Report((int)((processed / (float)totalFiles) * 100));
+                        using var zip = new ZipArchive(cs, ZipArchiveMode.Create, true);
+                        var files = Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
+                        int totalFiles = files.Length;
+                        int processed = 0;
+
+                        foreach (var file in files)
+                        {
+                            var entryName = Path.GetRelativePath(sourcePath, file);
+                            zip.CreateEntryFromFile(file, entryName);
+                            processed++;
+                            progress?.Report((int)((processed / (float)totalFiles) * 100));
+                        }
+                    }
+                    else
+                    {
+                        string fileName = Path.GetFileName(sourcePath);
+                        byte[] nameBytes = Encoding.UTF8.GetBytes(fileName);
+                        byte[] nameLengthBytes = BitConverter.GetBytes(nameBytes.Length);
+
+                        cs.Write(nameLengthBytes, 0, 4);
+                        cs.Write(nameBytes, 0, nameBytes.Length);
+
+                        using var fsSource = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        CopyWithProgress(fsSource, cs, fsSource, progress);
                     }
                 }
+
+                PathSafety.CommitFile(tempDest, destPath);
             }
-            else
+            catch
             {
-                string fileName = Path.GetFileName(sourcePath);
-                byte[] nameBytes = Encoding.UTF8.GetBytes(fileName);
-                byte[] nameLengthBytes = BitConverter.GetBytes(nameBytes.Length);
-                
-                cs.Write(nameLengthBytes, 0, 4);
-                cs.Write(nameBytes, 0, nameBytes.Length);
-
-                using var fsSource = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                byte[] buffer = new byte[BUFFER_SIZE];
-                int bytesRead;
-                long totalBytes = fsSource.Length;
-                long totalRead = 0;
-
-                while ((bytesRead = fsSource.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    cs.Write(buffer, 0, bytesRead);
-                    totalRead += bytesRead;
-                    if (totalBytes > 0)
-                    {
-                        progress?.Report((int)((totalRead / (float)totalBytes) * 100));
-                    }
-                }
+                PathSafety.TryDeleteFile(tempDest);
+                throw;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(fileKey);
             }
             return recoveryCode;
         }
 
         // Giải mã file (Hỗ trợ cả V1 cũ và V2 mới)
-        public (bool success, string message, string outPath) DecryptV2(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite, IProgress<int> progress)
+        public (bool success, string message, string? outPath) DecryptV2(string encPath, string outputFolder, string passwordOrRecoveryCode, bool checkOverwrite, IProgress<int>? progress)
         {
             using var fsSource = new FileStream(encPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             int firstByte = fsSource.ReadByte();
@@ -107,43 +104,35 @@ namespace FolderLocker.Models
                 return DecryptLegacy(encPath, outputFolder, passwordOrRecoveryCode, checkOverwrite);
             }
 
-            bool isFolder = fsSource.ReadByte() == 1;
-
-            int passEncLen = fsSource.ReadByte();
-            byte[] passEnc = new byte[passEncLen];
-            fsSource.Read(passEnc, 0, passEncLen);
-
-            int recEncLen = fsSource.ReadByte();
-            byte[] recEnc = new byte[recEncLen];
-            fsSource.Read(recEnc, 0, recEncLen);
+            bool isFolder;
+            byte[] passEnc, recEnc, iv;
+            try
+            {
+                isFolder = ReadByteOrThrow(fsSource) == 1;
+                passEnc = new byte[ReadByteOrThrow(fsSource)];
+                fsSource.ReadExactly(passEnc);
+                recEnc = new byte[ReadByteOrThrow(fsSource)];
+                fsSource.ReadExactly(recEnc);
+                iv = new byte[16];
+                fsSource.ReadExactly(iv);
+            }
+            catch (EndOfStreamException)
+            {
+                return (false, "File bị lỗi hoặc không đúng định dạng!", null);
+            }
 
             byte[] providedHash = HashPassword(passwordOrRecoveryCode);
-            
-            byte[] fileKey = null;
-            try { 
-                var temp = DecryptKey(passEnc, providedHash);
-                if (temp.Length == 32) fileKey = temp;
-            } catch { }
-            
-            if (fileKey == null)
-            {
-                try { 
-                    var temp = DecryptKey(recEnc, providedHash);
-                    if (temp.Length == 32) fileKey = temp;
-                } catch { }
-            }
+            byte[]? fileKey = TryUnwrapKey(passEnc, providedHash) ?? TryUnwrapKey(recEnc, providedHash);
 
             if (fileKey == null)
             {
                 return (false, "Sai mật khẩu hoặc mã khôi phục!", null);
             }
 
-            byte[] iv = new byte[16];
-            fsSource.Read(iv, 0, 16);
-
             using var aes = Aes.Create();
             aes.Key = fileKey;
             aes.IV = iv;
+            CryptographicOperations.ZeroMemory(fileKey);
 
             using var cs = new CryptoStream(fsSource, aes.CreateDecryptor(), CryptoStreamMode.Read);
 
@@ -151,60 +140,120 @@ namespace FolderLocker.Models
             {
                 string outputName = Path.GetFileNameWithoutExtension(encPath);
                 string outputPath = Path.Combine(outputFolder, outputName);
-                
+
                 if (checkOverwrite && Directory.Exists(outputPath))
                     return (false, "OVERWRITE_WARNING", outputPath);
 
-                Directory.CreateDirectory(outputPath);
-                
-                string tempZip = Path.Combine(outputFolder, Guid.NewGuid().ToString() + ".tmp");
-                using (var fsTemp = new FileStream(tempZip, FileMode.Create))
-                {
-                    byte[] buffer = new byte[BUFFER_SIZE];
-                    int bytesRead;
-                    long totalEncBytes = fsSource.Length;
-                    
-                    while ((bytesRead = cs.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        fsTemp.Write(buffer, 0, bytesRead);
-                        progress?.Report((int)((fsSource.Position / (float)totalEncBytes) * 100));
-                    }
-                }
-                
-                using (var archive = ZipFile.OpenRead(tempZip))
-                {
-                    archive.ExtractToDirectory(outputPath, true);
-                }
-                File.Delete(tempZip);
+                ExtractZipStream(cs, fsSource, outputPath, progress);
                 return (true, "Giải mã thành công!", outputPath);
             }
             else
             {
                 byte[] lenBuffer = new byte[4];
-                int read = cs.Read(lenBuffer, 0, 4);
-                if (read < 4) return (false, "File bị lỗi!", null);
-                
+                cs.ReadExactly(lenBuffer);
+
                 int nameLen = BitConverter.ToInt32(lenBuffer, 0);
+                if (nameLen <= 0 || nameLen > PathSafety.MaxNameBytes)
+                    return (false, "File bị lỗi hoặc không đúng định dạng!", null);
+
                 byte[] nameBytes = new byte[nameLen];
-                cs.Read(nameBytes, 0, nameLen);
-                string originalName = Encoding.UTF8.GetString(nameBytes);
+                cs.ReadExactly(nameBytes);
+                string? originalName = PathSafety.SafeFileName(Encoding.UTF8.GetString(nameBytes));
+                if (originalName == null)
+                    return (false, "Tên file trong dữ liệu không hợp lệ!", null);
 
                 string outputPath = Path.Combine(outputFolder, originalName);
-                
+
                 if (checkOverwrite && File.Exists(outputPath))
                     return (false, "OVERWRITE_WARNING", outputPath);
-                
-                using var fsDest = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
-                byte[] buffer = new byte[BUFFER_SIZE];
-                int bytesRead;
-                long totalEncBytes = fsSource.Length;
 
-                while ((bytesRead = cs.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    fsDest.Write(buffer, 0, bytesRead);
-                    progress?.Report((int)((fsSource.Position / (float)totalEncBytes) * 100));
-                }
+                WriteFileAtomically(outputPath, dest => CopyWithProgress(cs, dest, fsSource, progress));
                 return (true, "Giải mã thành công!", outputPath);
+            }
+        }
+
+        /// <summary>
+        /// Giải mã zip ra file tạm (ẩn), giải nén vào thư mục tạm rồi mới thay thế thư mục đích.
+        /// File tạm chứa dữ liệu đã giải mã luôn được xóa, kể cả khi lỗi.
+        /// </summary>
+        private static void ExtractZipStream(Stream plain, Stream progressSource, string outputPath, IProgress<int>? progress)
+        {
+            string tempZip = PathSafety.TempSibling(outputPath + ".zip");
+            string tempDir = PathSafety.TempSibling(outputPath);
+            try
+            {
+                using (var fsTemp = new FileStream(tempZip, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                {
+                    File.SetAttributes(tempZip, FileAttributes.Hidden | FileAttributes.Temporary);
+                    CopyWithProgress(plain, fsTemp, progressSource, progress);
+                    fsTemp.Position = 0;
+
+                    using var archive = new ZipArchive(fsTemp, ZipArchiveMode.Read);
+                    Directory.CreateDirectory(tempDir);
+                    archive.ExtractToDirectory(tempDir, true);
+                }
+
+                PathSafety.CommitDirectory(tempDir, outputPath);
+            }
+            catch
+            {
+                PathSafety.TryDeleteDirectory(tempDir);
+                throw;
+            }
+            finally
+            {
+                PathSafety.TryDeleteFile(tempZip);
+            }
+        }
+
+        /// <summary>Ghi file qua file tạm cùng thư mục; chỉ thay thế file đích khi ghi xong không lỗi.</summary>
+        private static void WriteFileAtomically(string outputPath, Action<Stream> write)
+        {
+            string temp = PathSafety.TempSibling(outputPath);
+            try
+            {
+                using (var fsDest = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    write(fsDest);
+                PathSafety.CommitFile(temp, outputPath);
+            }
+            catch
+            {
+                PathSafety.TryDeleteFile(temp);
+                throw;
+            }
+        }
+
+        private static void CopyWithProgress(Stream from, Stream to, Stream progressSource, IProgress<int>? progress)
+        {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            long total = progressSource.Length;
+            int bytesRead;
+            while ((bytesRead = from.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                to.Write(buffer, 0, bytesRead);
+                if (total > 0)
+                    progress?.Report((int)Math.Min(100, progressSource.Position * 100 / total));
+            }
+        }
+
+        private static int ReadByteOrThrow(Stream s)
+        {
+            int b = s.ReadByte();
+            if (b < 0) throw new EndOfStreamException();
+            return b;
+        }
+
+        private byte[]? TryUnwrapKey(byte[] wrapped, byte[] key)
+        {
+            if (wrapped.Length < 32) return null;
+            try
+            {
+                var temp = DecryptKey(wrapped, key);
+                return temp.Length == 32 ? temp : null;
+            }
+            catch (CryptographicException)
+            {
+                return null;
             }
         }
 
@@ -233,12 +282,12 @@ namespace FolderLocker.Models
             return ms.ToArray();
         }
 
-        private string GenerateRecoveryCode()
+        // Dùng bộ sinh số ngẫu nhiên an toàn cho mật mã (CSPRNG), không dùng System.Random
+        private static string GenerateRecoveryCode()
         {
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            var random = new Random();
-            string GenerateSegment(int length) => new string(Enumerable.Repeat(chars, length).Select(s => s[random.Next(s.Length)]).ToArray());
-            return $"FL-{GenerateSegment(4)}-{GenerateSegment(4)}-{GenerateSegment(4)}";
+            string Segment() => RandomNumberGenerator.GetString(chars, 4);
+            return $"FL-{Segment()}-{Segment()}-{Segment()}";
         }
 
         public void Delete(string path)
@@ -252,67 +301,70 @@ namespace FolderLocker.Models
         // ============================================
         // LOGIC LEGACY (V1) ĐỂ TƯƠNG THÍCH NGƯỢC
         // ============================================
-        
-        private (bool success, string message, string outPath) DecryptLegacy(string encPath, string outputFolder, string password, bool checkOverwrite)
+
+        private (bool success, string message, string? outPath) DecryptLegacy(string encPath, string outputFolder, string password, bool checkOverwrite)
         {
+            byte[] data;
+            bool isFolder;
             try
             {
                 byte[] final = File.ReadAllBytes(encPath);
-                bool isFolder = final[0] == 1;
-                byte[] encrypted = new byte[final.Length - 1];
-                Array.Copy(final, 1, encrypted, 0, encrypted.Length);
+                if (final.Length < 1 + 32) return (false, "File bị lỗi hoặc không đúng định dạng!", null);
+                isFolder = final[0] == 1;
+                data = DecryptLegacyData(final.AsSpan(1).ToArray(), password);
+            }
+            catch (CryptographicException)
+            {
+                return (false, "Sai mật khẩu (V1 không hỗ trợ mã khôi phục)!", null);
+            }
 
-                byte[] data = DecryptLegacyData(encrypted, password);
-                
+            try
+            {
                 if (isFolder)
                 {
                     string outputName = Path.GetFileNameWithoutExtension(encPath);
                     string outputPath = Path.Combine(outputFolder, outputName);
-                    
+
                     if (checkOverwrite && Directory.Exists(outputPath))
                         return (false, "OVERWRITE_WARNING", outputPath);
 
-                    Directory.CreateDirectory(outputPath);
                     using var ms = new MemoryStream(data);
-                    using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
-                    zip.ExtractToDirectory(outputPath, true);
+                    ExtractZipStream(ms, ms, outputPath, null);
                     return (true, "Giải mã thành công (V1)!", outputPath);
                 }
-                else 
+                else
                 {
+                    if (data.Length < 4) return (false, "Sai mật khẩu (V1 không hỗ trợ mã khôi phục)!", null);
                     int nameLength = BitConverter.ToInt32(data, 0);
-                    string originalFileName = Encoding.UTF8.GetString(data, 4, nameLength);
-                    byte[] fileBytes = new byte[data.Length - 4 - nameLength];
-                    Array.Copy(data, 4 + nameLength, fileBytes, 0, fileBytes.Length);
-                    
+                    if (nameLength <= 0 || nameLength > PathSafety.MaxNameBytes || 4 + nameLength > data.Length)
+                        return (false, "Sai mật khẩu (V1 không hỗ trợ mã khôi phục)!", null);
+
+                    string? originalFileName = PathSafety.SafeFileName(Encoding.UTF8.GetString(data, 4, nameLength));
+                    if (originalFileName == null)
+                        return (false, "Tên file trong dữ liệu không hợp lệ!", null);
+
                     string outputPath = Path.Combine(outputFolder, originalFileName);
-                    
+
                     if (checkOverwrite && File.Exists(outputPath))
                         return (false, "OVERWRITE_WARNING", outputPath);
 
-                    File.WriteAllBytes(outputPath, fileBytes);
+                    WriteFileAtomically(outputPath, dest => dest.Write(data, 4 + nameLength, data.Length - 4 - nameLength));
                     return (true, "Giải mã thành công (V1)!", outputPath);
                 }
             }
-            catch
+            catch (InvalidDataException)
             {
+                // Padding đúng ngẫu nhiên với mật khẩu sai → dữ liệu rác, zip không đọc được
                 return (false, "Sai mật khẩu (V1 không hỗ trợ mã khôi phục)!", null);
             }
         }
 
-        private byte[] DecryptLegacyData(byte[] data, string password)
+        private static byte[] DecryptLegacyData(byte[] data, string password)
         {
             using var aes = Aes.Create();
             aes.Key = HashPassword(password);
-            var iv = new byte[16];
-            Array.Copy(data, 0, iv, 0, 16);
-            aes.IV = iv;
-            var encrypted = new byte[data.Length - 16];
-            Array.Copy(data, 16, encrypted, 0, encrypted.Length);
-            using var ms = new MemoryStream();
-            using (var cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Write))
-                cs.Write(encrypted, 0, encrypted.Length);
-            return ms.ToArray();
+            aes.IV = data.AsSpan(0, 16).ToArray();
+            return aes.DecryptCbc(data.AsSpan(16), aes.IV);
         }
     }
 }
