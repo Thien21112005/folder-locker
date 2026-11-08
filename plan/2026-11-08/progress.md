@@ -32,8 +32,8 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
 | P14 | F9: giữ thời gian tạo/sửa file | ✅ | `feat(crypto)` |
 | P15 | F10: nhật ký hoạt động | ✅ | `feat` |
 | P16 | F7: tích hợp Windows Explorer + mở file từ dòng lệnh | ✅ | `feat` |
-| P17 | F11: CLI | 🔄 | |
-| P18 | F12: GitHub Actions | ⬜ | |
+| P17 | F11: CLI | ✅ | `feat(cli)` |
+| P18 | F12: GitHub Actions | 🔄 | |
 | P19 | Polish UI, chụp kiểm tra, cập nhật tài liệu | ⬜ | |
 
 ## Nhật ký
@@ -76,3 +76,4 @@ Bạn đã duyệt "làm hết". Quyết định cho các câu hỏi mở trong 
   - Ghi vào HKCU (không cần admin): chuột phải file/thư mục → "Mã hóa bằng Folder Locker" (không hiện cho .enc); double-click .enc để mở. Không giành `.enc` nếu app khác đã đăng ký trước.
   - App nhận đường dẫn từ dòng lệnh và chạy một phiên bản duy nhất: tiến trình phụ chuyển đường dẫn qua named pipe (chỉ user hiện tại); các lần mở sát nhau được gộp thành một lựa chọn nhiều mục.
   - Test registry chạy trên khóa tạm và tự dọn. 81/81 test pass.
+- **P17** — F11 CLI: `encrypt` / `decrypt` / `verify` / `help`. Mật khẩu chỉ nhận qua stdin hoặc `FOLDERLOCKER_PASSWORD`, từ chối `--password`. stdout dễ cho máy đọc (`<mã>\t<file.enc>`); mã thoát 0/1/2; có `--out`, `--overwrite`, `--delete-original` (kiểm tra lại file .enc trước khi xóa). Gắn vào console của shell (WinExe), xuất UTF-8. Đã chạy thử exe thật: mã hóa → giải mã → thiếu mật khẩu. 90/90 test pass.
