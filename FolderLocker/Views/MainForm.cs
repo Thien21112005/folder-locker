@@ -63,11 +63,104 @@ namespace FolderLocker.Views
             var mnuOpenLog = new ToolStripMenuItem("Mở thư mục nhật ký");
             mnuOpenLog.Click += (_, _) => OpenLogFolder();
 
+            _mnuExplorer = new ToolStripMenuItem("Thêm vào menu chuột phải của Explorer");
+            _mnuExplorer.Click += (_, _) => ToggleExplorerIntegration();
+            try { _mnuExplorer.Checked = ShellIntegration.IsRegistered(); } catch { /* registry bị chặn */ }
+
             menuSettings.Items.Insert(0, _mnuSecureDelete);
-            menuSettings.Items.Insert(1, new ToolStripSeparator());
+            menuSettings.Items.Insert(1, _mnuExplorer);
+            menuSettings.Items.Insert(2, new ToolStripSeparator());
             menuSettings.Items.Add(new ToolStripSeparator());
             menuSettings.Items.Add(mnuOpenLog);
             UpdateDeleteOptionText();
+        }
+
+        private ToolStripMenuItem _mnuExplorer = null!;
+
+        private void ToggleExplorerIntegration()
+        {
+            try
+            {
+                if (_mnuExplorer.Checked)
+                {
+                    ShellIntegration.Unregister();
+                    _mnuExplorer.Checked = false;
+                    Dialogs.Info(this, "Đã gỡ khỏi Explorer", "Menu chuột phải và liên kết file .enc đã được gỡ.");
+                }
+                else
+                {
+                    string exe = Environment.ProcessPath ?? Application.ExecutablePath;
+                    ShellIntegration.Register(exe);
+                    _mnuExplorer.Checked = true;
+                    Dialogs.Info(this, "Đã tích hợp với Explorer",
+                        "• Chuột phải file/thư mục → \"Mã hóa bằng Folder Locker\" (Windows 11: trong \"Show more options\").\n" +
+                        "• Double-click file .enc để mở bằng Folder Locker.\n\n" +
+                        "Nếu bạn di chuyển thư mục ứng dụng, hãy tắt rồi bật lại tùy chọn này.");
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+            {
+                Dialogs.Error(this, "Không thay đổi được tích hợp Explorer", ex.Message);
+            }
+        }
+
+        // ============================================
+        // NHẬN ĐƯỜNG DẪN TỪ DÒNG LỆNH / EXPLORER
+        // ============================================
+
+        private readonly IReadOnlyList<string> _initialPaths = Array.Empty<string>();
+        private readonly List<string> _pendingExternal = new();
+        private DateTime _lastExternalAt = DateTime.MinValue;
+
+        /// <summary>Mở app với đường dẫn chọn sẵn (từ Explorer / dòng lệnh).</summary>
+        public MainForm(IReadOnlyList<string> initialPaths) : this()
+        {
+            _initialPaths = initialPaths;
+        }
+
+        /// <summary>
+        /// Nhận đường dẫn do tiến trình khác chuyển sang (an toàn khi gọi từ thread nền).
+        /// Các lần nhận sát nhau (Explorer mở nhiều file) được gộp thành một lựa chọn.
+        /// </summary>
+        public void ReceiveExternalPaths(string[] paths)
+        {
+            lock (_pendingExternal) _pendingExternal.AddRange(paths);
+            if (IsHandleCreated) BeginInvoke(FlushExternalPaths);
+        }
+
+        private void FlushExternalPaths()
+        {
+            string[] batch;
+            lock (_pendingExternal)
+            {
+                batch = _pendingExternal.ToArray();
+                _pendingExternal.Clear();
+            }
+
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+            if (batch.Length == 0) return;
+
+            if (_isBusy)
+            {
+                Dialogs.Info(this, "Đang xử lý", "Hãy đợi thao tác hiện tại xong rồi chọn lại.");
+                return;
+            }
+
+            bool merge = DateTime.UtcNow - _lastExternalAt < TimeSpan.FromSeconds(2) && _selectedPaths.Count > 0;
+            _lastExternalAt = DateTime.UtcNow;
+            SetSelectedPaths(merge ? _selectedPaths.Concat(batch) : batch);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (_initialPaths.Count > 0)
+            {
+                _lastExternalAt = DateTime.UtcNow;
+                SetSelectedPaths(_initialPaths);
+            }
+            FlushExternalPaths();
         }
 
         private void OpenLogFolder()

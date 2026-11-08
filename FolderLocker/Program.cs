@@ -7,17 +7,27 @@ namespace FolderLocker
     {
         /// <summary>
         ///  The main entry point for the application.
+        ///  Tham số dòng lệnh là đường dẫn file/thư mục (từ Explorer) sẽ được chọn sẵn.
         /// </summary>
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            var paths = args.Where(a => File.Exists(a) || Directory.Exists(a)).Select(Path.GetFullPath).ToArray();
+
+            using var instance = new SingleInstance("FolderLocker");
+            if (!instance.IsPrimary && instance.ForwardToPrimary(paths))
+                return; // Đã giao cho cửa sổ đang mở
+
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             InstallCrashHandlers();
             AppLog.Prune();
             Views.Theming.Theme.Initialize();
-            Application.Run(new MainForm());
+
+            var form = new MainForm(paths);
+            if (instance.IsPrimary) instance.Listen(form.ReceiveExternalPaths);
+            Application.Run(form);
         }
 
         /// <summary>Lỗi không lường trước: ghi nhật ký và báo nhẹ nhàng thay vì sập app.</summary>
